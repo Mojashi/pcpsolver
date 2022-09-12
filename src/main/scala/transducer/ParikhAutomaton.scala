@@ -1,6 +1,7 @@
 package transducer
 
 import presburger.*
+import graph.EdgeId
 
 type IntVector[Key] = Map[Key, Int]
 
@@ -12,9 +13,7 @@ class IntVectorMonoid[Key] extends Monoid[IntVector[Key]] {
 }
 
 extension[InAlphabet, OutAlphabet] (trans: Transducer[InAlphabet, List[OutAlphabet]]) {
-  def parikhAutomaton(alphabetSet: Set[InAlphabet]): ParikhAutomaton[InAlphabet, OutAlphabet] = {
-    val len = alphabetSet.size
-
+  def parikhAutomaton: ParikhAutomaton[InAlphabet, OutAlphabet] = {
     val m = IntVectorMonoid[OutAlphabet]()
     ParikhAutomaton[InAlphabet, OutAlphabet](
       trans.start, trans.fin, trans.transitions.map(t => Transition(
@@ -22,6 +21,14 @@ extension[InAlphabet, OutAlphabet] (trans: Transducer[InAlphabet, List[OutAlphab
       ))
     )(m)
   }
+
+  def solve(constraint: ExistentialPresburgerFormula): Option[List[InAlphabet]] =
+    parikhAutomaton.solve(constraint)
+      .flatMap( edgeUseCount =>
+        Some(trans.graph.eulerTrail(trans.start, edgeUseCount).map(e =>
+            trans.idToTransitionMap(e.id).in
+        ))
+      )
 }
 
 class ParikhAutomaton[Alphabet, Key]
@@ -36,16 +43,27 @@ class ParikhAutomaton[Alphabet, Key]
 ) {
 
   type T = Transition[State, Alphabet, IntVector[Key]]
+  val keys: Set[Key] = transitions.flatMap(t=>t.out.keys)
 
+  def solve(constraint: ExistentialPresburgerFormula): Option[Map[EdgeId, Int]] = {
+    PresburgerFormulaSolver().solve(And(
+      constraint,
+      presburgerFormula
+    )).flatMap(m =>
+      Some(transitions.map(trans =>
+        (trans.id, m(transOccurCountVar(trans).name))
+      ).toMap)
+    )
+  }
+
+  private val transOccurCountVar = (t: T) => Variable(s"y_${t.id}")
+  private val distanceVar = (q: State) => Variable(s"z_${q}")
+  private val stateOccurCountVar = (q: State) => Variable(s"n_${q}")
+  private val isStart = (q: State) => if (q == start) Constant(1) else Constant(0)
+  private val isFin = (q: State) => if (fin.contains(q)) Constant(1) else Constant(0)
 
   def presburgerFormula: ExistentialPresburgerFormula = {
-    val transOccurCountVar = (t: T) => Variable(s"y_${t.id}")
-    val distanceVar = (q: State) => Variable(s"z_${q}")
-    val stateOccurCountVar = (q: State) => Variable(s"n_${q}")
-    val isStart = (q: State) => if(q == start) Constant(1) else Constant(0)
-    val isFin = (q: State) => if(fin.contains(q)) Constant(1) else Constant(0)
-
-    val SumYdTargetToQ = (q:State) => Variable(s"sum_y_target_${q}")
+    val SumYdTargetToQ = (q: State) => Variable(s"sum_y_target_${q}")
     val SumYdSourceFrQ = (q: State) => Variable(s"sum_y_source_${q}")
 
     val notReached = (q: State) => And(
@@ -75,34 +93,50 @@ class ParikhAutomaton[Alphabet, Key]
               Constant(1),
             )
           ),
-          sourceFrom(q).map(t=>
-            Equal(
-              distanceVar(t.from),
-              Add(
-                distanceVar(q),
-                Constant(1)
-              )
-            )
-          ).reduce(Or.apply)
+            targetTo(q).map(t=>
+              AndList(List(
+                Equal(
+                  distanceVar(q),
+                  Add(
+                    distanceVar(t.from),
+                    Constant(1)
+                  )
+                ),
+                GreaterThan(
+                  transOccurCountVar(t),
+                  Constant(0)
+                ),
+                GreaterThanOrEqual(
+                  distanceVar(t.from),
+                  Constant(0)
+                )
+              ))
+            ).reduceOption(Or.apply).getOrElse(True),
         )
     )
 
     val states = this.states.toSeq
 
-    val formulas = states.map(q =>
-      Equal(
-        targetTo(q).map(transOccurCountVar).reduceLeft((l, r) => Add(l, r)),
+    val formulas: Seq[Option[ExistentialPresburgerFormula]] =
+    transitions.toSeq.map(t =>
+        Some(GreaterThanOrEqual(transOccurCountVar(t), Constant(0)))
+    ) ++
+    states.map(q =>
+      Some(Equal(
+        targetTo(q).map(transOccurCountVar).reduce((l, r) => Add(l, r)),
         SumYdTargetToQ(q)
-      )
+      ))
     )++
     states.map(q =>
-      Equal(
-        sourceFrom(q).map(transOccurCountVar).reduce((l, r) => Add(l, r)),
-        SumYdSourceFrQ(q)
-      )
-    )++
+      sourceFrom(q).map(transOccurCountVar)
+        .reduceOption[PresburgerExpression]((l, r) => Add(l, r)).flatMap(e =>
+        Some(Equal(
+          e,
+          SumYdSourceFrQ(q)
+        ))
+      )) ++
     states.map(q =>
-      Equal(
+      Some(Equal(
         Add(
           Sub(
             SumYdTargetToQ(q),
@@ -114,29 +148,44 @@ class ParikhAutomaton[Alphabet, Key]
           )
         ),
         Constant(0)
-      )
+      ))
     )++
     states.map(q =>
-      Equal(
+      Some(Equal(
         stateOccurCountVar(q),
         Add(
           SumYdTargetToQ(q),
           isStart(q)
         )
-      )
+      ))
     )++
     states.map(q =>
-      Equal(
+      Some(Equal(
         stateOccurCountVar(q),
         Add(
           SumYdSourceFrQ(q),
           isFin(q)
         )
-      )
+      ))
     ) ++
-    states.map(q => Or(isReached(q) , notReached(q)))
+    states.map(
+      q => Some(Or(isReached(q) , notReached(q)))
+    ) ++
+    keys.map(key =>
+        Some(Equal(
+        transitions.map(t =>
+          Mul(
+            Constant(t.out.getOrElse(key, 0)),
+            transOccurCountVar(t)
+          )
+        ).reduce(Add.apply),
+        Variable(key.toString)
+      ))
+    )
 
-    formulas.reduce(And.apply)
+    formulas.flatten.reduce(And.apply)
   }
+
+
 
 }
