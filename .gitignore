@@ -7,3 +7,6 @@ project/plugins/project/
 .history
 .cache
 .lib/
+*.dylib
+/.idea/workspace.xml
+/.idea/tasks.xml
