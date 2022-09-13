@@ -24,7 +24,7 @@ class ParikhAutomatonTest extends AnyFunSuite {
           Variable("a"),
           Add(
             Variable("b"),
-            Constant(3)
+            Constant(4)
           )
         ),
         GreaterThan(
@@ -33,7 +33,7 @@ class ParikhAutomatonTest extends AnyFunSuite {
         ),
         Equal(
           Variable("c"),
-          Constant(3),
+          Variable("a"),
         ),
       ))
     ))

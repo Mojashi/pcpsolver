@@ -8,5 +8,4 @@ project/plugins/project/
 .cache
 .lib/
 *.dylib
-/.idea/workspace.xml
-/.idea/tasks.xml
+/.idea

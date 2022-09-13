@@ -90,7 +90,6 @@ case class Add(left: PE, right: PE) extends PE {
 }
 
 // for convenience
-// "x-y" is shorthand of "x+z and z+y=0"
 case class Sub(left: PE, right: PE) extends PE {
   override def eval(implicit m: VarValueMap): Int = left.eval(m) - right.eval(m)
 
@@ -100,7 +99,7 @@ case class Sub(left: PE, right: PE) extends PE {
 }
 
 // ????
-case class Mul(left: PE, right: PE) extends PE {
+case class Mul(left: Constant, right: PE) extends PE {
   override def eval(implicit m: VarValueMap): Int = left.eval(m) * right.eval(m)
 
   override def z3Expr(implicit ctx: Context) = ctx.mkMul(left.z3Expr, right.z3Expr)

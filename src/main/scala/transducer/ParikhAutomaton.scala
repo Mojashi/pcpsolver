@@ -3,6 +3,8 @@ package transducer
 import presburger.*
 import graph.EdgeId
 
+import scala.collection.mutable.ListBuffer
+
 type IntVector[Key] = Map[Key, Int]
 
 class IntVectorMonoid[Key] extends Monoid[IntVector[Key]] {
@@ -117,25 +119,25 @@ class ParikhAutomaton[Alphabet, Key]
 
     val states = this.states.toSeq
 
-    val formulas: Seq[Option[ExistentialPresburgerFormula]] =
-    transitions.toSeq.map(t =>
+    val formulas: ListBuffer[Option[ExistentialPresburgerFormula]] = ListBuffer()
+    formulas ++= transitions.toSeq.map(t =>
         Some(GreaterThanOrEqual(transOccurCountVar(t), Constant(0)))
-    ) ++
-    states.map(q =>
+    )
+    formulas ++= states.map(q =>
       Some(Equal(
         targetTo(q).map(transOccurCountVar).reduce((l, r) => Add(l, r)),
         SumYdTargetToQ(q)
       ))
-    )++
-    states.map(q =>
+    )
+    formulas ++= states.map(q =>
       sourceFrom(q).map(transOccurCountVar)
         .reduceOption[PresburgerExpression]((l, r) => Add(l, r)).flatMap(e =>
         Some(Equal(
           e,
           SumYdSourceFrQ(q)
         ))
-      )) ++
-    states.map(q =>
+      ))
+    formulas ++= states.map(q =>
       Some(Equal(
         Add(
           Sub(
@@ -149,8 +151,8 @@ class ParikhAutomaton[Alphabet, Key]
         ),
         Constant(0)
       ))
-    )++
-    states.map(q =>
+    )
+    formulas ++= states.map(q =>
       Some(Equal(
         stateOccurCountVar(q),
         Add(
@@ -158,8 +160,8 @@ class ParikhAutomaton[Alphabet, Key]
           isStart(q)
         )
       ))
-    )++
-    states.map(q =>
+    )
+    formulas ++= states.map(q =>
       Some(Equal(
         stateOccurCountVar(q),
         Add(
@@ -167,11 +169,11 @@ class ParikhAutomaton[Alphabet, Key]
           isFin(q)
         )
       ))
-    ) ++
-    states.map(
+    )
+    formulas ++= states.map(
       q => Some(Or(isReached(q) , notReached(q)))
-    ) ++
-    keys.map(key =>
+    )
+    formulas ++= keys.map(key =>
         Some(Equal(
         transitions.map(t =>
           Mul(
@@ -185,7 +187,4 @@ class ParikhAutomaton[Alphabet, Key]
 
     formulas.flatten.reduce(And.apply)
   }
-
-
-
 }
