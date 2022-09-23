@@ -2,62 +2,74 @@ package transducer
 
 import graph.{DirectedGraph, Edge, EdgeId, EdgeLike}
 
-
-trait TransducerLike[Input, Output] {
-def transduce(word: Input): Option[Output]
-}
+import scala.:+
 
 type State = String
 
-case class Transition[State, InAlphabet, Label]
-  (from: State, to: State, in: InAlphabet, out: Label, id: EdgeId)
-  extends EdgeLike[State](from, to, id)
+case class Transition[State, Label]
+  (from: State, to: State, in: String, out: Label, id: EdgeId)
+  extends EdgeLike[State]
 
 trait Monoid[A] {
   def plus(l: A, r: A): A
   val unit: A
 }
 
-class Transducer[InAlphabet, OutMonoid: Monoid]
+class Transducer[OutMonoid: Monoid]
 (
   val start: State,
   val fin: Set[State],
-  val transitions: Set[Transition[State, InAlphabet, OutMonoid]],
-) extends TransducerLike[List[InAlphabet], OutMonoid] {
-  type T = Transition[State, InAlphabet, OutMonoid]
-
+  val transitions: Seq[Transition[State, OutMonoid]],
+) extends DirectedGraph[State, Transition[State, OutMonoid]](transitions) {
   private val outM = implicitly[Monoid[OutMonoid]]
 
-  type InWord = List[InAlphabet]
+  type InWord = String
 
-  val states: Set[State] = transitions.flatMap(t => Set(t.from, t.to))
-
-  val transitionMap: Map[State, Map[InAlphabet, T]] = {
-    transitions.groupBy(t => t.from).mapValues(v => v.map(t => (t.in, t)).toMap).toMap
-  }
-  val idToTransitionMap: Map[Int, T] =
-    transitions.map(t => (t.id, t)).toMap
-
-  override def transduce(word: InWord): Option[OutMonoid] = {
-    val (finalState, output) = word.foldLeft[(State, OutMonoid)]((start, outM.unit))((s, a) => {
-      val (state: State, outWord: OutMonoid) = s
-      val trans = transitionMap(state)(a)
-      (trans.to, outM.plus(outWord, trans.out))
-    })
-
-    if (fin.contains(finalState))
-      Some(output)
-    else None
+  def transduce(word: InWord, from: State = start): Set[OutMonoid] = {
+    if(word.isEmpty)
+      if (fin.contains(from))
+        Set(outM.unit)
+      else Set()
+    else
+      edgesMap(from)
+        .filter(trans => trans.in.startsWith(word))
+        .flatMap(trans =>
+          transduce(trans.in.substring(word.length), trans.to).map( rest =>
+            outM.plus(trans.out, rest)
+          )
+        ).toSet
   }
 
-  val graph: DirectedGraph[State] = DirectedGraph(
-    transitionMap.mapValues(es => es.values.map(a=>Edge(a.from,a.to,a.id)).toList).toMap
-  )
-  def sourceFrom(q: State): Set[T] = {
-    transitions.filter(t => t.from == q)
-  }
-  def targetTo(q: State): Set[T] = {
-    transitions.filter(t => t.to == q)
+  def expandTransition(id: EdgeId): Transducer[OutMonoid] = {
+    val restTransitions = transitions.filter(t => t.id != id)
+    val trans = idToedgesMap(id)
+    val nexts = edgesMap(trans.to)
+
+    val newFin = s"fin_${trans.id}"
+
+    val finTransition = Transition(
+      from = trans.from,
+      to = newFin,
+      in = trans.in,
+      out = trans.out,
+      id = s"tofin_${trans.id}"
+    )
+
+    val newTransitions = restTransitions ++ nexts.map(bTrans =>
+      Transition(
+        from = trans.from,
+        to = bTrans.to,
+        in = trans.in + bTrans.in,
+        out = outM.plus(trans.out, bTrans.out),
+        id = s"expand_($id)_(${bTrans.id})"
+      )
+    ) :+ finTransition
+
+    Transducer(
+      start = start,
+      fin = fin + newFin,
+      transitions = newTransitions
+    )
   }
 }
 
@@ -66,7 +78,6 @@ implicit object StringMonoid extends Monoid[String] {
 
   override def plus(l: String, r: String): String = l ++ r
 }
-type StringTransducer = Transducer[Char, String]
 
 class ListMonoid[A] extends Monoid[List[A]] {
   override def plus(l: List[A], r: List[A]): List[A] = l++r

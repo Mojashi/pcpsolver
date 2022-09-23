@@ -14,177 +14,119 @@ class IntVectorMonoid[Key] extends Monoid[IntVector[Key]] {
   override val unit = Map()
 }
 
-extension[InAlphabet, OutAlphabet] (trans: Transducer[InAlphabet, List[OutAlphabet]]) {
-  def parikhAutomaton: ParikhAutomaton[InAlphabet, OutAlphabet] = {
+extension[OutAlphabet] (trans: Transducer[List[OutAlphabet]]) {
+  def parikhAutomaton: ParikhAutomaton[OutAlphabet] = {
     val m = IntVectorMonoid[OutAlphabet]()
-    ParikhAutomaton[InAlphabet, OutAlphabet](
+    ParikhAutomaton[OutAlphabet](
       trans.start, trans.fin, trans.transitions.map(t => Transition(
         t.from, t.to, t.in, t.out.groupMapReduce(a=>a)(_=>1)((l,r)=>l+r): IntVector[OutAlphabet] , t.id
       ))
     )(m)
   }
 
-  def solve(constraint: ExistentialPresburgerFormula): Option[List[InAlphabet]] =
+  def solve(constraint: ExistentialPresburgerFormula): Option[String] =
     parikhAutomaton.solve(constraint)
       .flatMap( edgeUseCount =>
-        Some(trans.graph.eulerTrail(trans.start, edgeUseCount).map(e =>
-            trans.idToTransitionMap(e.id).in
-        ))
+        Some(trans.eulerTrail(trans.start, edgeUseCount).map(e =>
+            trans.idToedgesMap(e.id).in
+        ).mkString)
       )
+
+  def findWrappedTrans(s: String): Seq[EdgeId] = {
+    trans.transitions
+      .filter(t =>
+        s.substring(1, s.length - 1).contains(t.out.mkString)
+      )
+      .filter(t =>
+        trans.sourceFrom(t.to).nonEmpty &&
+        trans.targetTo(t.to).nonEmpty
+      )
+      .map(t => t.id)
+  }
 }
 
-class ParikhAutomaton[Alphabet, Key]
+implicit class PrettyPrintMap[K, V](val map: Map[K, V]) {
+  def prettyPrint: PrettyPrintMap[K, V] = this
+
+  override def toString: String = {
+    val valuesString = toStringLines.mkString("\n")
+
+    "Map (\n" + valuesString + "\n)"
+  }
+
+  def toStringLines = {
+    map
+      .flatMap{ case (k, v) => keyValueToString(k, v)}
+      .map(indentLine(_))
+  }
+
+  def keyValueToString(key: K, value: V): Iterable[String] = {
+    value match {
+      case v: Map[_, _] => Iterable(key.toString + " -> Map (") ++ v.prettyPrint.toStringLines ++ Iterable(")")
+      case x => Iterable(key.toString + " -> " + x.toString)
+    }
+  }
+
+  def indentLine(line: String): String = {
+    "\t" + line
+  }
+}
+class ParikhAutomaton[Key]
 (
   start: State,
   fin: Set[State],
-  transitions: Set[Transition[State, Alphabet, IntVector[Key]]],
+  transitions: Seq[Transition[State, IntVector[Key]]],
 )(
   implicit outM: Monoid[IntVector[Key]]
-) extends Transducer[Alphabet, IntVector[Key]] (
+) extends Transducer[IntVector[Key]] (
   start, fin, transitions
 ) {
 
-  type T = Transition[State, Alphabet, IntVector[Key]]
-  val keys: Set[Key] = transitions.flatMap(t=>t.out.keys)
+  type T = Transition[State, IntVector[Key]]
+  val keys: Set[Key] = transitions.flatMap(t=>t.out.keys).toSet
 
   def solve(constraint: ExistentialPresburgerFormula): Option[Map[EdgeId, Int]] = {
     PresburgerFormulaSolver().solve(And(
       constraint,
-      presburgerFormula
-    )).flatMap(m =>
-      Some(transitions.map(trans =>
-        (trans.id, m(transOccurCountVar(trans).name))
-      ).toMap)
-    )
+      chCountPresburgerFormula
+    )) match {
+      case Some(m) =>
+//        println(m.prettyPrint)
+        Some(transitions.map(trans =>
+          (trans.id, m(transOccurCountVar(trans).name))
+        ).toMap)
+      case None =>
+        print(PresburgerFormulaSolver().findUnSatCore(And(
+          constraint,
+          chCountPresburgerFormula
+        )).get.enumerateVar)
+        None
+    }
   }
 
-  private val transOccurCountVar = (t: T) => Variable(s"y_${t.id}")
-  private val distanceVar = (q: State) => Variable(s"z_${q}")
-  private val stateOccurCountVar = (q: State) => Variable(s"n_${q}")
-  private val isStart = (q: State) => if (q == start) Constant(1) else Constant(0)
-  private val isFin = (q: State) => if (fin.contains(q)) Constant(1) else Constant(0)
+  def prefixForKeyCount = "alphabet_"
+  val KeyCountVar = (key: Key) => Variable(prefixForKeyCount + key)
 
-  def presburgerFormula: ExistentialPresburgerFormula = {
-    val SumYdTargetToQ = (q: State) => Variable(s"sum_y_target_${q}")
-    val SumYdSourceFrQ = (q: State) => Variable(s"sum_y_source_${q}")
-
-    val notReached = (q: State) => And(
-      Equal(
-        stateOccurCountVar(q),
-        Constant(0)
-      ),
-      Equal(
-        distanceVar(q),
-        Constant(-1)
-      )
+  def chCountPresburgerFormula: ExistentialPresburgerFormula = {
+    val formulas = ListBuffer(pathConstraint)
+    formulas ++= states.filter(s=>s!=start).map(s =>
+        Equal(isStartVar(s), Constant(0))
     )
-    val isReached = (q: State) =>
-      And(
-        GreaterThan(
-          stateOccurCountVar(q),
-          Constant(0)
-        ),
-        Or(
-          And(
-            Equal(
-              distanceVar(q),
-              Constant(0)
-            ),
-            Equal(
-              isStart(q),
-              Constant(1),
-            )
-          ),
-            targetTo(q).map(t=>
-              AndList(List(
-                Equal(
-                  distanceVar(q),
-                  Add(
-                    distanceVar(t.from),
-                    Constant(1)
-                  )
-                ),
-                GreaterThan(
-                  transOccurCountVar(t),
-                  Constant(0)
-                ),
-                GreaterThanOrEqual(
-                  distanceVar(t.from),
-                  Constant(0)
-                )
-              ))
-            ).reduceOption(Or.apply).getOrElse(True),
-        )
-    )
-
-    val states = this.states.toSeq
-
-    val formulas: ListBuffer[Option[ExistentialPresburgerFormula]] = ListBuffer()
-    formulas ++= transitions.toSeq.map(t =>
-        Some(GreaterThanOrEqual(transOccurCountVar(t), Constant(0)))
-    )
-    formulas ++= states.map(q =>
-      Some(Equal(
-        targetTo(q).map(transOccurCountVar).reduce((l, r) => Add(l, r)),
-        SumYdTargetToQ(q)
-      ))
-    )
-    formulas ++= states.map(q =>
-      sourceFrom(q).map(transOccurCountVar)
-        .reduceOption[PresburgerExpression]((l, r) => Add(l, r)).flatMap(e =>
-        Some(Equal(
-          e,
-          SumYdSourceFrQ(q)
-        ))
-      ))
-    formulas ++= states.map(q =>
-      Some(Equal(
-        Add(
-          Sub(
-            SumYdTargetToQ(q),
-            SumYdSourceFrQ(q)
-          ),
-          Sub(
-            isStart(q),
-            isFin(q)
-          )
-        ),
-        Constant(0)
-      ))
-    )
-    formulas ++= states.map(q =>
-      Some(Equal(
-        stateOccurCountVar(q),
-        Add(
-          SumYdTargetToQ(q),
-          isStart(q)
-        )
-      ))
-    )
-    formulas ++= states.map(q =>
-      Some(Equal(
-        stateOccurCountVar(q),
-        Add(
-          SumYdSourceFrQ(q),
-          isFin(q)
-        )
-      ))
-    )
-    formulas ++= states.map(
-      q => Some(Or(isReached(q) , notReached(q)))
+    formulas ++= states.diff(fin).map(s =>
+      Equal(isFinVar(s), Constant(0))
     )
     formulas ++= keys.map(key =>
-        Some(Equal(
+      Equal(
         transitions.map(t =>
           Mul(
             Constant(t.out.getOrElse(key, 0)),
             transOccurCountVar(t)
           )
         ).reduce(Add.apply),
-        Variable(key.toString)
-      ))
+        KeyCountVar(key)
+      )
     )
 
-    formulas.flatten.reduce(And.apply)
+    AndList(formulas.toSeq)
   }
 }
