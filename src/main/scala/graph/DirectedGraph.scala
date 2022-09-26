@@ -25,6 +25,8 @@ object UniqueEdgeId {
   }
 }
 
+val EdgeUseCountVar = (t: EdgeId) => Variable(s"y_${t}")
+
 class DirectedGraph[V, E <: EdgeLike[V]]
 (
   val edges: Seq[E]
@@ -62,7 +64,7 @@ class DirectedGraph[V, E <: EdgeLike[V]]
 
   def extractEdgeUseCount(m: VarValueMap): Map[EdgeId, Int] =
     edges.map(trans =>
-      (trans.id, m(edgeUseCountVar(trans.id).name))
+      (trans.id, m(EdgeUseCountVar(trans.id).name))
     ).toMap
 
   def sourceFrom(q: V): Seq[E] = {
@@ -73,7 +75,6 @@ class DirectedGraph[V, E <: EdgeLike[V]]
     edges.filter(t => t.to == q)
   }
 
-  val edgeUseCountVar = (t: EdgeId) => Variable(s"y_${t}")
   val distanceVar = (q: V) => Variable(s"z_${q}")
   val stateUseCountVar = (q: V) => Variable(s"n_${q}")
   val isStartVar = (q: V) => Variable(s"start_$q")
@@ -119,7 +120,7 @@ class DirectedGraph[V, E <: EdgeLike[V]]
                 )
               ),
               GreaterThan(
-                edgeUseCountVar(t.id),
+                EdgeUseCountVar(t.id),
                 Constant(0)
               ),
               GreaterThanOrEqual(
@@ -155,17 +156,17 @@ class DirectedGraph[V, E <: EdgeLike[V]]
     formulas += Some(onlyOneFinCons)
     formulas += Some(onlyOneStCons)
     formulas ++= edges.map(t =>
-      Some(GreaterThanOrEqual(edgeUseCountVar(t.id), Constant(0)))
+      Some(GreaterThanOrEqual(EdgeUseCountVar(t.id), Constant(0)))
     )
     formulas ++= states.map(q =>
       Some(Equal(
-        targetTo(q).map(t=>edgeUseCountVar(t.id)).foldLeft[PresburgerExpression](Constant(0))((l, r) => Add(l, r)),
+        targetTo(q).map(t=>EdgeUseCountVar(t.id)).foldLeft[PresburgerExpression](Constant(0))((l, r) => Add(l, r)),
         SumYdTargetToQ(q)
       ))
     )
     formulas ++= states.map(q =>
       Some(Equal(
-        sourceFrom(q).map(t=>edgeUseCountVar(t.id))
+        sourceFrom(q).map(t=>EdgeUseCountVar(t.id))
           .foldLeft[PresburgerExpression](Constant(0))((l, r) => Add(l, r)),
         SumYdSourceFrQ(q)
       ))
@@ -215,7 +216,7 @@ class DirectedGraph[V, E <: EdgeLike[V]]
         case Some(m) =>
           println(m.prettyPrint)
           Some(edges.map(trans =>
-            (trans.id, m(edgeUseCountVar(trans.id).name))
+            (trans.id, m(EdgeUseCountVar(trans.id).name))
           ).toMap)
         case None =>
           println(s"UNSAT core: ${PresburgerFormulaSolver().findUnSatCore(constraint).get.enumerateVar}")

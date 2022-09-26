@@ -1,5 +1,6 @@
 package automaton
 
+import dataType.{IntVector, IntVectorMonoid}
 import graph.{DirectedGraph, EdgeId, EdgeLike}
 import presburger.{Add, AndList, Constant, Equal, ExistentialPresburgerFormula, Mul}
 
@@ -29,10 +30,14 @@ class EPSFreeNFA[State, Alphabet]
 (
   start: State,
   fin: Set[State],
-  transitions: Seq[Transition[State, Alphabet]],
+  val epsFreeTransitions: Seq[Transition[State, Alphabet]],
 ) extends NFA[State, Alphabet] (
-    start, fin, transitions.map(t=>Transition(t.from, t.to, Some(t.in), t.id))
-)
+    start, fin, epsFreeTransitions.map(t=>Transition(t.from, t.to, Some(t.in), t.id))
+) {
+  def this(nfa: EPSFreeNFA[State, Alphabet]) = {
+    this(nfa.start, nfa.fin, nfa.epsFreeTransitions)
+  }
+}
 
 class NFA[State, Alphabet]
 (
@@ -86,4 +91,26 @@ class NFA[State, Alphabet]
           Some(trail.map(t => t.in).flatten)
       )
     )
+
+  def truncateUnReachable: NFA[State, Alphabet] = {
+    val vertices = findReachables(start)
+    NFA(
+      start = start,
+      fin = fin.intersect(vertices),
+      transitions = transitions.filter(t => vertices.contains(t.from))
+    )
+  }
+
+  def parikhAutomaton: ParikhAutomaton[State, Alphabet] = {
+    val m = IntVectorMonoid[Alphabet]()
+    ParikhAutomaton[State, Alphabet](
+      start, fin, transitions.map(t => Transition(
+        t.from, t.to, t.in match {
+          case Some(c) => Map((c , 1))
+          case None => Map()
+        }, t.id
+      ))
+    )(m)
+  }
+
 }

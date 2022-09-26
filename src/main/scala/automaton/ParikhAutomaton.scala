@@ -1,7 +1,7 @@
 package automaton
 
 import dataType.*
-import graph.EdgeId
+import graph.{EdgeId, EdgeUseCountVar}
 import presburger.*
 import transducer.Transducer
 
@@ -30,7 +30,7 @@ class ParikhAutomaton[State, Key]
         transitions.map(t =>
           Mul(
             Constant(t.in.getOrElse(key, 0)),
-            edgeUseCountVar(t.id)
+            EdgeUseCountVar(t.id)
           )
         ).reduce(Add.apply),
         KeyCountVar(key)

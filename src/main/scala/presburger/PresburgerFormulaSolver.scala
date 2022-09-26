@@ -6,15 +6,19 @@ class PresburgerFormulaSolver {
     implicit val ctx: Context = new Context()
     val solver = ctx.mkSolver()
     val p = ctx.mkParams
-//    p.add("logic", "QF_NRA")
+    p.add("logic", "BV")
     solver.setParameters(p)
 
     solver.add(formula.z3Expr)
-    if(solver.check() == Status.SATISFIABLE)
-      Some(formula.enumerateVar.map( v =>
+    println("start solve")
+    if(solver.check() == Status.SATISFIABLE) {
+      println("sat")
+      Some(formula.enumerateVar.map(v =>
         (v, solver.getModel.evaluate(ctx.mkIntConst(v), true).asInstanceOf[IntNum].getInt)
       ).toMap)
+    }
     else {
+      println("unsat")
       None
     }
   }

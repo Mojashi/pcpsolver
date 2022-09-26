@@ -1,7 +1,7 @@
 package transducer
 
 import dataType.*
-import graph.{EdgeId, EdgeLike}
+import graph.{EdgeId, EdgeLike, EdgeUseCountVar}
 import util.EdgeUseCountTracker
 
 import scala.collection.mutable.ListBuffer
@@ -39,8 +39,8 @@ class NormalFormTransducer[State, InAlphabet, OutAlphabet]
         .filter(t2=>t2.in==t1.out&&t2.in.isDefined)
         .map[NormalFormTransducerTransition[(State, StateB), InAlphabet, OutAlphabetB]](t2 => {
           val id = s"(${t1.id},${t2.id})"
-          tracker.AddPart(edgeUseCountVar(t1.id), edgeUseCountVar(id))
-          tracker.AddPart(edgeUseCountVar(t2.id), edgeUseCountVar(id))
+          tracker.AddPart(EdgeUseCountVar(t1.id), EdgeUseCountVar(id))
+          tracker.AddPart(EdgeUseCountVar(t2.id), EdgeUseCountVar(id))
 
           NormalFormTransducerTransition(
             from = (t1.from, t2.from),
@@ -55,7 +55,7 @@ class NormalFormTransducer[State, InAlphabet, OutAlphabet]
     newTransitions ++= normalTransitions.filter(t1 => t1.out.isEmpty).flatMap(t1 =>
       other.states.map(s2 => {
         val id = s"(${t1.id},from${s2})"
-        tracker.AddPart(edgeUseCountVar(t1.id), edgeUseCountVar(id))
+        tracker.AddPart(EdgeUseCountVar(t1.id), EdgeUseCountVar(id))
 
         NormalFormTransducerTransition(
           from = (t1.from, s2),
@@ -70,7 +70,7 @@ class NormalFormTransducer[State, InAlphabet, OutAlphabet]
     newTransitions ++= other.normalTransitions.filter(t2 => t2.in.isEmpty).flatMap(t2 =>
       states.map(s1 => {
         val id = s"(from$s1,${t2.id})"
-        tracker.AddPart(edgeUseCountVar(t2.id), edgeUseCountVar(id))
+        tracker.AddPart(EdgeUseCountVar(t2.id), EdgeUseCountVar(id))
 
         NormalFormTransducerTransition(
           from = (s1, t2.from),
