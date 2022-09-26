@@ -1,7 +1,7 @@
 package automaton
 
 import graph.{DirectedGraph, EdgeId, EdgeLike}
-import presburger.ExistentialPresburgerFormula
+import presburger.{Add, AndList, Constant, Equal, ExistentialPresburgerFormula, Mul}
 
 import scala.collection.mutable.ListBuffer
 
@@ -21,7 +21,18 @@ extension[Alphabet] (s: Seq[Alphabet]) {
 
 case class Transition[State, Alphabet]
 (from: State, to: State, in: Alphabet, id: EdgeId)
-  extends EdgeLike[State]
+  extends EdgeLike[State] {
+  override def toString: _root_.java.lang.String = s"$in\n$id"
+}
+
+class EPSFreeNFA[State, Alphabet]
+(
+  start: State,
+  fin: Set[State],
+  transitions: Seq[Transition[State, Alphabet]],
+) extends NFA[State, Alphabet] (
+    start, fin, transitions.map(t=>Transition(t.from, t.to, Some(t.in), t.id))
+)
 
 class NFA[State, Alphabet]
 (
@@ -56,7 +67,23 @@ class NFA[State, Alphabet]
 
   val alphabets = transitions.flatMap(t=>t.in).toSet
 
-//  def acceptConstraint: ExistentialPresburgerFormula = {
-//
-//  }
+  def acceptConstraint: ExistentialPresburgerFormula = {
+    val startCons = states.filter(s => s != start).map[ExistentialPresburgerFormula](s =>
+      Equal(isStartVar(s), Constant(0))
+    ).toSeq
+    val finCons = states.diff(fin).map[ExistentialPresburgerFormula](s =>
+      Equal(isFinVar(s), Constant(0))
+    ).toSeq
+
+    AndList(
+      pathConstraint +: (startCons ++ finCons)
+    )
+  }
+
+  def solveInputWord(constraint: ExistentialPresburgerFormula): Option[Seq[Alphabet]] =
+    solveEdgeUseCount(constraint).flatMap( useCount =>
+      eulerTrail(start, useCount).flatMap(trail =>
+          Some(trail.map(t => t.in).flatten)
+      )
+    )
 }

@@ -10,6 +10,7 @@ class PCPTest extends AnyFunSuite {
       Tile("10", "100"),
       Tile("0", "111")
     ))
+    
     print(pcp)
   }
 }

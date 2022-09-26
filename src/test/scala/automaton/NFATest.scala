@@ -22,7 +22,7 @@ class NFATest extends AnyFunSuite {
   )
   test("testIntersect") {
     val B = ParallelNFA(A1, A2)
-    println(B.solve)
+    println(B.solveInputWord(B.acceptConstraint))
   }
 
 }

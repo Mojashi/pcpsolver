@@ -1,5 +1,6 @@
 dist/*
 target/
+.DS_Store
 lib_managed/
 src_managed/
 project/boot/
@@ -9,3 +10,5 @@ project/plugins/project/
 .lib/
 *.dylib
 /.idea
+*.dot
+*.svg

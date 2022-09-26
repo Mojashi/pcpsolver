@@ -70,26 +70,14 @@ class ParallelNFA[StateA, StateB, Alphabet]
     transitions = nt.toSeq
   )
 }) {
-
-  def acceptConstraint: ExistentialPresburgerFormula = {
-    val formulas = ListBuffer(pathConstraint)
-    formulas ++= states.filter(s => s != start).map(s =>
-      Equal(isStartVar(s), Constant(0))
-    )
-    formulas ++= states.diff(fin).map(s =>
-      Equal(isFinVar(s), Constant(0))
-    )
-    AndList(formulas.toSeq)
-  }
-
-  def solve = {
-    PresburgerFormulaSolver()
-      .solve(acceptConstraint)
-      .flatMap(m => {
-        println(m)
-        Some(eulerTrail(start, extractEdgeUseCount(m)).map(t => t.in))
-      })
-  }
+//  def solve = {
+//    PresburgerFormulaSolver()
+//      .solve(acceptConstraint)
+//      .flatMap(m => {
+//        println(m)
+//        Some(eulerTrail(start, extractEdgeUseCount(m)).map(t => t.in))
+//      })
+//  }
 }
 
 case class WaitingState[StateA, StateB, Alphabet](left:StateA, right: StateB, waiting: Option[Alphabet])

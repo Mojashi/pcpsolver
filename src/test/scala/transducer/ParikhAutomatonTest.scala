@@ -2,24 +2,26 @@ package transducer
 
 import org.scalatest.funsuite.AnyFunSuite
 import presburger.*
+import dataType.*
 
 class ParikhAutomatonTest extends AnyFunSuite {
 
   test("testSolve") {
-    val t: Transducer[List[Char]] = Transducer(
+    implicit val m = ListMonoid[Char]()
+    val t: Transducer[String, Char, List[Char]] = EPSFreeTransducer(
       "0", Set("f"), Seq(
-        Transition("0", "0", "a", List('a'), "1"),
-        Transition("0", "0", "b", List('b'), "2"),
-        Transition("0", "1", "[", List(), "3"),
-        Transition("1", "1", "a", List('c'), "4"),
-        Transition("1", "1", "b", List('c'), "5"),
-        Transition("1", "0", "]", List(), "6"),
-        Transition("0", "f", "#", List(), "7"),
+        TransducerTransition("0", "0", 'a', List('a'), "1"),
+        TransducerTransition("0", "0", 'b', List('b'), "2"),
+        TransducerTransition("0", "1", '[', List(), "3"),
+        TransducerTransition("1", "1", 'a', List('c'), "4"),
+        TransducerTransition("1", "1", 'b', List('c'), "5"),
+        TransducerTransition("1", "0", ']', List(), "6"),
+        TransducerTransition("0", "f", '#', List(), "7"),
       )
-    )(ListMonoid[Char]())
+    )
 
     val pa = t.parikhAutomaton
-    print(t.solve(
+    print(t.solveInputWord(
       AndList(List(
         Equal(
           pa.KeyCountVar('a'),
