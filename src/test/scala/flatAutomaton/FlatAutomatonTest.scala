@@ -14,38 +14,6 @@ class FlatAutomatonTest extends AnyFunSuite {
     fa.saveSVG("fa")
   }
 
-  test("pcp transduce") {
-    val inFa = FlatAutomaton[Int]("in", 3, 3, Set(0, 1, 2, 3))
-    val outFa = FlatAutomaton[Char]("out", 3, 3, Set('0', '1'))
-
-    val pcp = PCP(List(
-      Tile("111", "010"),
-      Tile("111", "1"),
-      Tile("10", "100"),
-      Tile("0", "111")
-    ))
-
-    implicit val tracker = EdgeUseCountTracker()
-    val trans = pcp.transducers._1.normalForm
-    val p = ParalellTransducerNFA(inFa, trans, outFa)
-    println("svg")
-//    p.saveSVG("pnfa")
-    println("finsvg")
-
-    val ans = p.solveInputWord(AndList(List(
-      inFa.purityConstraint,
-      outFa.purityConstraint,
-      p.acceptConstraint,
-      outFa.parikhAutomaton.chCountPresburgerFormula,
-//      tracker.formula,
-      GreaterThan(Variable("alphabet_0"), Constant(5)),
-      GreaterThan(Variable("alphabet_1"), Constant(5))
-    )))
-
-//    println(tracker.parts.toMap.prettyPrint)
-
-    println(ans)
-  }
 
   test("pcp solve") {
 //    val p = 1

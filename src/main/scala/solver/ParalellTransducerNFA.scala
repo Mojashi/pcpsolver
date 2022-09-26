@@ -65,7 +65,7 @@ class ParalellTransducerNFA[StateA, StateT,StateB,InAlphabet, OutAlphabet]
             from = (s1, t2.from, t3.from),
             to = (s1, t2.to, t3.to),
             in = (None, t3.in),
-            id = s"prtT1isNone(${s1},${t2.id},${t3.id})"
+            id = id
           )
         })
       )
@@ -81,7 +81,7 @@ class ParalellTransducerNFA[StateA, StateT,StateB,InAlphabet, OutAlphabet]
             from = (s1, t2.from, s3),
             to = (s1, t2.to, s3),
             in = (None, None),
-            id = s"prtTisNone(${s1},${t2.id},${s3})"
+            id = id
           )
         })
       )
@@ -97,7 +97,7 @@ class ParalellTransducerNFA[StateA, StateT,StateB,InAlphabet, OutAlphabet]
             from = (t1.from, s2, s3),
             to = (t1.to, s2, s3),
             in = (None, None),
-            id = s"prtInNoneMove(${t1.id},${s2},${s3})"
+            id = id
           )
         })
       )
@@ -113,7 +113,7 @@ class ParalellTransducerNFA[StateA, StateT,StateB,InAlphabet, OutAlphabet]
             from = (s1, s2, t3.from),
             to = (s1, s2, t3.to),
             in = (None, None),
-            id = s"prtOutNoneMove(${s1},${s2},${t3.id})"
+            id = id
           )
         })
       )
