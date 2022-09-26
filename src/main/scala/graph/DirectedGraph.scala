@@ -82,6 +82,10 @@ class DirectedGraph[V, E <: EdgeLike[V]]
   private val SumYdTargetToQ = (q: V) => Variable(s"sum_y_target_${q}")
   private val SumYdSourceFrQ = (q: V) => Variable(s"sum_y_source_${q}")
 
+  def edgeUseCountIsPositiveConstraint = {
+
+  }
+
   def pathConstraint: ExistentialPresburgerFormula = {
     val notReached = (q: V) => And(
       Equal(
@@ -238,17 +242,17 @@ class DirectedGraph[V, E <: EdgeLike[V]]
     ret.toSet
   }
 
-  def printDot(name: String = ""): String =
+  def printDot(name: String = "", useCountMap:Map[EdgeId, Int] = Map()): String =
     s"""digraph $name {
-       ${edges.map { e => s"\"${e.from}\" -> \"${e.to}\" [label=\"${e}\"];" }.mkString("\n")}
+       ${edges.map { e => s"\"${e.from}\" -> \"${e.to}\" [label=\"${e}\", style = ${if(useCountMap.isEmpty || useCountMap.getOrElse(e.id, 0) > 0) "solid" else "dotted" }];" }.mkString("\n")}
        }"""
 
-  def saveDot(fileName: String, name: String = ""): Unit = {
-    Files.write(Paths.get(fileName), printDot(name).getBytes(StandardCharsets.UTF_8))
+  def saveDot(fileName: String, name: String = "", useCountMap:Map[EdgeId, Int] = Map()): Unit = {
+    Files.write(Paths.get(fileName), printDot(name, useCountMap).getBytes(StandardCharsets.UTF_8))
   }
 
-  def saveSVG(baseName: String, name: String=""): Unit = {
-    saveDot(baseName + ".dot", name)
+  def saveSVG(baseName: String, name: String="", useCountMap:Map[EdgeId, Int] = Map()): Unit = {
+    saveDot(baseName + ".dot", name, useCountMap)
     Files.write(
       Paths.get(baseName + ".svg"),
       Process(s"dot -Tsvg ${baseName + ".dot"}").!!.getBytes(StandardCharsets.UTF_8)

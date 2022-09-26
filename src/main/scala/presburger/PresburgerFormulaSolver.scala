@@ -6,7 +6,7 @@ class PresburgerFormulaSolver {
     implicit val ctx: Context = new Context()
     val solver = ctx.mkSolver()
     val p = ctx.mkParams
-    p.add("logic", "BV")
+//    p.add("logic", "BV")
     solver.setParameters(p)
 
     solver.add(formula.z3Expr)

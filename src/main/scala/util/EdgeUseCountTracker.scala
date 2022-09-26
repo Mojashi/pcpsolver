@@ -9,18 +9,11 @@ class EdgeUseCountTracker {
   def AddPart(original: Variable, part: Variable) = {
     parts.getOrElseUpdate(original, ListBuffer()).addOne(part)
   }
-  def formulaFor(v: Variable) = parts.get(v).flatMap(ps=>
-      Some(Equal(
-        v,
-        ps.toSeq.reduce(Add.apply)
-      ))
-  )
-
-  def formula = AndList(
+  def formula(usableVars: Set[VarName]) = AndList(
     parts.toMap.map((orig, ps) =>
       Equal(
         orig,
-        ps.toSeq.reduce(Add.apply)
+        ps.filter(p=>usableVars.contains(p.name)).toSeq.fold(Constant(0))(Add.apply)
       )
     ).toSeq
   )

@@ -53,7 +53,7 @@ class TransducerTest extends AnyFunSuite {
         AndList(List(nf.acceptConstraint)),
         pa.chCountPresburgerFormula,
         GreaterThan(pa.KeyCountVar('a'), Constant(1)),
-        tracker.formula
+//        tracker.formula
       ))
     ))
   }

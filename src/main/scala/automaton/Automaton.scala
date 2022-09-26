@@ -112,5 +112,4 @@ class NFA[State, Alphabet]
       ))
     )(m)
   }
-
 }

@@ -41,7 +41,7 @@ object SubstringSolver extends App {
       tt1.parikhAutomaton.KeyCountVar(Left('0')),
       Constant(0)
     ),
-    tracker.formula,
+//    tracker.formula,
     AndList(pcp.tiles.indices.map(i =>
       Equal(
         Variable(s"y_t1_$i"),
@@ -52,7 +52,7 @@ object SubstringSolver extends App {
 
 
   println(tracker.parts.toMap.prettyPrint)
-  println(tracker.formula)
+//  println(tracker.formula)
 
   tt1.parikhAutomaton.saveSVG("tt1.pa")
   tt2.parikhAutomaton.saveSVG("tt2.pa")
