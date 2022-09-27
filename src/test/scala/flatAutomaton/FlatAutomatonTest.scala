@@ -95,7 +95,6 @@ class FlatAutomatonTest extends AnyFunSuite {
       out1Fa.purityConstraint,
       p1.acceptConstraint,
       p2.acceptConstraint,
-      inFa.parikhAutomaton.chCountPresburgerFormula,
     ))
 
     val ts = List(tracker1, tracker2)
