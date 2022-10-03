@@ -11,6 +11,7 @@ class ParallelNFA[StateA, StateB, Alphabet]
 )(
   implicit tracker: EdgeUseCountTracker = EdgeUseCountTracker()
 ) extends NFA[(StateA, StateB), Alphabet]({
+  tracker.newSession()
   type NewTransition = Transition[(StateA, StateB), Option[Alphabet]]
 
   val alphabets = left.alphabets.intersect(right.alphabets).toSeq

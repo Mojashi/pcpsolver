@@ -138,7 +138,7 @@ class DirectedGraph[V, E <: EdgeLike[V]]
 
     val onlyOneFinCons = And(
       Equal(
-        states.map(state => isFinVar(state)).reduce((l, r) => Add(l, r)),
+        states.map(state => isFinVar(state)).foldLeft[PresburgerExpression](Constant(0))((l, r) => Add(l, r)),
         Constant(1),
       ),
       AndList(
@@ -148,7 +148,7 @@ class DirectedGraph[V, E <: EdgeLike[V]]
 
     val onlyOneStCons = And(
       Equal(
-        states.map(state => isStartVar(state)).reduce((l, r) => Add(l, r)),
+        states.map(state => isStartVar(state)).foldLeft[PresburgerExpression](Constant(0))((l, r) => Add(l, r)),
         Constant(1),
       ),
       AndList(

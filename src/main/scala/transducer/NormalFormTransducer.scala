@@ -1,5 +1,6 @@
 package transducer
 
+import automaton.{NFA, Transition}
 import dataType.*
 import graph.{EdgeId, EdgeLike, EdgeUseCountVar}
 import util.EdgeUseCountTracker
@@ -25,6 +26,65 @@ class NormalFormTransducer[State, InAlphabet, OutAlphabet]
     }, t.id))
 )(ListMonoid[OutAlphabet]()) {
 
+  def combine[StateB]
+  (
+    other: NFA[StateB, OutAlphabet],
+  )(implicit tracker: EdgeUseCountTracker): NFA[(State, StateB), InAlphabet] = {
+    tracker.newSession()
+
+      val newTransitions = ListBuffer[Transition[(State, StateB), Option[InAlphabet]]]()
+
+      newTransitions ++= normalTransitions.flatMap(t1 =>
+        other.transitions
+          .filter(t2 => t2.in == t1.out && t2.in.isDefined)
+          .map[Transition[(State, StateB), Option[InAlphabet]]](t2 => {
+            val id = s"(${t1.id},${t2.id})"
+            tracker.AddPart(EdgeUseCountVar(t1.id), EdgeUseCountVar(id))
+            tracker.AddPart(EdgeUseCountVar(t2.id), EdgeUseCountVar(id))
+
+            Transition(
+              from = (t1.from, t2.from),
+              to = (t1.to, t2.to),
+              in = t1.in,
+              id = id
+            )
+          })
+      )
+
+      newTransitions ++= normalTransitions.filter(t1 => t1.out.isEmpty).flatMap(t1 =>
+        other.states.map(s2 => {
+          val id = s"(${t1.id},from${s2})"
+          tracker.AddPart(EdgeUseCountVar(t1.id), EdgeUseCountVar(id))
+
+          Transition(
+            from = (t1.from, s2),
+            to = (t1.to, s2),
+            in = t1.in,
+            id = id
+          )
+        })
+      )
+
+      newTransitions ++= other.transitions.filter(t2 => t2.in.isEmpty).flatMap(t2 =>
+        states.map(s1 => {
+          val id = s"(from$s1,${t2.id})"
+          tracker.AddPart(EdgeUseCountVar(t2.id), EdgeUseCountVar(id))
+
+          Transition(
+            from = (s1, t2.from),
+            to = (s1, t2.to),
+            in = None,
+            id = id
+          )
+        })
+      )
+
+      NFA(
+        start = (start, other.start),
+        fin = fin.flatMap(f1 => other.fin.map(f2 => (f1, f2))),
+        transitions = newTransitions.toSeq
+      ).truncateUnReachable
+  }
   def combine[StateB, OutAlphabetB]
   (
     other: NormalFormTransducer[StateB, OutAlphabet, OutAlphabetB],
@@ -170,4 +230,10 @@ class NormalFormTransducer[State, InAlphabet, OutAlphabet]
       normalTransitions = nt.toSeq
     ).truncateUnReachable
   }
+
+
+  def stateAny() =
+    transducer.NormalFormTransducer[Any, InAlphabet, OutAlphabet](
+      start, fin.toSet, normalTransitions.map(e => NormalFormTransducerTransition(e.from, e.to, e.in, e.out, e.id))
+    )
 }

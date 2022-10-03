@@ -3,10 +3,13 @@ package pcp
 import transducer.*
 import presburger.*
 import dataType.*
-import graph.{UniqueEdgeId, EdgeUseCountVar}
+import graph.{EdgeUseCountVar, UniqueEdgeId}
+import automaton.{NFA, Transition}
+import solver.ParallelNFA
 import util.*
 
 import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 case class Tile(u: String, d: String)
 
 class PCP
@@ -23,53 +26,35 @@ class PCP
       word.foldLeft("")((s, idx) => s + tiles(idx).d),
     )
 
-  def solveCommonSubstrings(words: Seq[String], maxLen: Option[Int]): Option[Seq[Int]] = {
+  def solveWithWathcer(watcher: NFA[Any, Char], maxLen: Option[Int]): Option[Seq[Int]] = {
     val (rt1, rt2) = transducers
     val (t1, t2) = (
-      rt1.addPrefix("t1").normalForm.mapEither(),
-      rt2.addPrefix("t2").normalForm.mapEither()
+      rt1.addPrefix("t1").normalForm,
+      rt2.addPrefix("t2").normalForm
     )
-
-    val ts: Seq[NormalFormTransducer[String, Either[Char, String], Either[Char, String]]] = words.zipWithIndex.map((s, idx) =>
-      SubStrCountTrans(s, alphabets, words.take(idx).map(p => Right(p)).toSet)
-    )
-    ts.zipWithIndex.foreach((t, idx) => t.saveSVG(s"ts$idx"))
 
     implicit val tracker = EdgeUseCountTracker()
 
-    var tt1: NormalFormTransducer[Any, Int, Either[Char, String]] = t1.stateAny()
-    var tt2: NormalFormTransducer[Any, Int, Either[Char, String]] = t2.stateAny()
+    val tt1 = t1.combine(watcher)
+    val tt2 = t2.combine(watcher)
+    val tt = ParallelNFA(tt1, tt2)
+    tt1.saveSVG("tt1")
+    tt2.saveSVG("tt2")
 
-    ts.foreach(t => {
-      tt1 = tt1.combine(t.addPrefix("a")).stateAny()
-      tt2 = tt2.combine(t.addPrefix("a")).stateAny()
-    })
+    println(s"watcher.transitions.size=${watcher.transitions.size}")
+    println(s"tt.transitions.size=${tt.transitions.size}")
 
-    val tt = tt1.product(tt2)
-//    tt.saveSVG("tt")
     var formula = AndList(List(
       tt.acceptConstraint,
-      tt.parikhAutomaton.chCountPresburgerFormula,
       GreaterThan(
-        //      Variable("y_t1_2"),
         Variable(s"sum_y_source_${tt.start}"),
         Constant(0),
       ),
-//      AndList(words.map(w =>
-//        Equal(
-//          tt.parikhAutomaton.KeyCountVar((Some(Right(w)), None)),
-//          tt.parikhAutomaton.KeyCountVar((None, Some(Right(w))))
-//        )
-//      )),
     ))
 
-//    t1.saveSVG("t1")
     formula = And(formula, tracker.formula(formula.enumerateVar))
 
-    val ss = alphabets.flatMap(a1 => alphabets.map(a2 =>
-      (Some(Left(a1)), Some(Left(a2)))
-    ) ++ Seq((Some(Left(a1)), None))
-    ).map(s=>tt.parikhAutomaton.KeyCountVar(s)).intersect(formula.enumerateVar.map(v=>Variable(v))).fold[PresburgerExpression](Constant(0))((l,r)=>Add(l,r))
+    val ss = tiles.indices.map(s => tt.parikhAutomaton.KeyCountVar(s)).fold[PresburgerExpression](Constant(0))((l, r) => Add(l, r))
 
     tt.solveInputWord(
       AndList(List(
@@ -85,6 +70,21 @@ class PCP
       ))
     )
 
+  }
+
+  def solveCommonSubstrings(words: Seq[String], alignPrefLen: Int, maxLen: Option[Int]): Option[Seq[Int]] = {
+    val ts: Seq[NFA[Any, Char]] = words.map(s =>SubStrCountNFA(s, alphabets).stateAny())
+    ts.zipWithIndex.foreach((t, idx) => t.saveSVG(s"ts$idx"))
+
+    var wathcer = ts.reduce((l,r)=>ParallelNFA(l,r).stateAny())
+
+    if(alignPrefLen > 0) {
+      wathcer = addPrefixToNFA(wathcer, alignPrefLen, alphabets).stateAny()
+    }
+
+    wathcer.saveSVG("watcher")
+
+    solveWithWathcer(wathcer, maxLen)
   }
 
   def solveCommonParikhImage: Option[Seq[Int]] = {
@@ -109,23 +109,20 @@ def toTransducer(ss: List[String]): EPSFreeTransducer[String, Int, List[Char]] =
     })
   )(ListMonoid[Char]())
 
-def SubStrCountTrans(word: String, alphabets: Set[Char], ignoreAlphabets: Set[Either[Char, String]]): NormalFormTransducer[String, Either[Char, String], Either[Char, String]] = {
-  NormalFormTransducer[String, Either[Char, String], Either[Char, String]](
+def SubStrCountNFA(word: String, alphabets: Set[Char]): NFA[String,Char] = {
+  NFA[String, Char](
     start = s"0",
     fin = word.indices.map(idx => s"$idx").toSet,
-    normalTransitions = word.indices.flatMap(idx =>
+    transitions = word.indices.flatMap(idx =>
       alphabets.toSeq.map(other => {
         val newWord = word.substring(0, idx) + other
         val jumpTo = (0 to newWord.length).findLast(l => word.substring(0, l) == newWord.substring(newWord.length - l, newWord.length)).get
 
-        NormalFormTransducerTransition(s"$idx", s"${jumpTo}", Some(Left(other)), Some(Left(other)), UniqueEdgeId.get)
-      }) ++
-        ignoreAlphabets.toSeq.map(a =>
-          NormalFormTransducerTransition(s"$idx", s"$idx", Some(a), Some(a), UniqueEdgeId.get)
-        )
+        Transition(s"$idx", s"${jumpTo}", Some(other), UniqueEdgeId.get)
+      })
     ) ++
-      Seq(NormalFormTransducerTransition(
-        s"${word.length}", "0", None, Some(Right(word)), UniqueEdgeId.get
+      Seq(Transition(
+        s"${word.length}", "0", None, UniqueEdgeId.get
       ))
   )
 }
@@ -139,15 +136,51 @@ extension[State, InAlphabet, OutAlphabet](t: NormalFormTransducer[State, InAlpha
       normalTransitions = t.normalTransitions.map(f)
     )
   }
+}
 
-  def mapEither() =
-    t.mapTransition[InAlphabet, Either[OutAlphabet,String]](t=>
-      NormalFormTransducerTransition(t.from,t.to,t.in, t.out.flatMap(c=>Some(Left(c))), t.id )
-    )
+def addPrefixToNFA[State](nfa: NFA[State, Char], prefixLen: Int, alphabets: Set[Char]): NFA[(String, Any), Char] = {
+  val transitions = ListBuffer[Transition[(String, Any), Option[Char]]]()
 
-  def stateAny() =
-    transducer.NormalFormTransducer[Any, InAlphabet, OutAlphabet](
-      t.start,t.fin.toSet,t.normalTransitions.map(e=>NormalFormTransducerTransition(e.from,e.to,e.in,e.out,e.id))
-    )
+  def dfs(curState: String, rest: Int): Unit = {
+    if (rest == 0) {
+      transitions.addAll(alphabets.map(ch =>
+        Transition(
+          from = ("pref", curState),
+          to = ("", nfa.start),
+          in = Some(ch),
+          id = UniqueEdgeId.get
+        )
+      ))
+    } else {
+      alphabets.foreach(ch => {
+        val nextState = curState + ch
+        transitions.addOne(
+          Transition(
+            from = ("pref", curState),
+            to = ("pref", nextState),
+            in = Some(ch),
+            id = UniqueEdgeId.get
+          )
+        )
 
+        dfs(nextState, rest - 1)
+      })
+    }
+  }
+
+  dfs("", prefixLen - 1)
+
+
+  NFA[(String, Any), Char](
+    start = ("pref", ""),
+    fin = nfa.fin.map(f => ("", f)),
+    transitions = nfa.transitions.map[Transition[(String, Any), Option[Char]]](t =>
+      Transition(
+        from = ("", t.from),
+        to = ("", t.to),
+        in = t.in,
+        id = t.id
+      )
+    ) ++ transitions
+  )
 }

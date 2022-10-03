@@ -112,4 +112,10 @@ class NFA[State, Alphabet]
       ))
     )(m)
   }
+
+
+  def stateAny() =
+    NFA[Any, Alphabet](
+      start, fin.toSet, transitions.map(e => Transition(e.from, e.to, e.in, e.id))
+    )
 }
