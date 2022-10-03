@@ -218,12 +218,12 @@ class DirectedGraph[V, E <: EdgeLike[V]]
   def solveEdgeUseCount(constraint: ExistentialPresburgerFormula): Option[Map[EdgeId, Int]] = {
       PresburgerFormulaSolver().solve(constraint) match {
         case Some(m) =>
-          println(m.prettyPrint)
+//          println(m.prettyPrint)
           Some(edges.map(trans =>
             (trans.id, m(EdgeUseCountVar(trans.id).name))
           ).toMap)
         case None =>
-          println(s"UNSAT core: ${PresburgerFormulaSolver().findUnSatCore(constraint).get.enumerateVar}")
+//          println(s"UNSAT core: ${PresburgerFormulaSolver().findUnSatCore(constraint).get.enumerateVar}")
           None
     }
   }

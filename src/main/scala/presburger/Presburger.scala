@@ -12,6 +12,15 @@ trait ExistentialPresburgerFormula {
   def map(f:AtomicPresburgerExpression=>PresburgerExpression): ExistentialPresburgerFormula
 }
 private type EPF = ExistentialPresburgerFormula
+case class Not(epf: EPF) extends ExistentialPresburgerFormula {
+  override def eval(implicit m: VarValueMap): Boolean = !epf.eval(m)
+
+  override def z3Expr(implicit ctx: Context): BoolExpr = ctx.mkNot(epf.z3Expr)
+
+  override def enumerateVar: Set[VarName] = epf.enumerateVar
+
+  override def map(f: AtomicPresburgerExpression => PresburgerExpression) = epf.map(f) 
+}
 case class Equal(left: PE, right: PE) extends ExistentialPresburgerFormula {
   override def eval(implicit m: VarValueMap): Boolean = left.eval(m) == right.eval(m)
 

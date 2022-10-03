@@ -60,12 +60,12 @@ class Transducer[State, InAlphabet, OutMonoid: Monoid]
   }
 
   def addPrefix(prefix: String) = Transducer(
-    start = s"${prefix}_${start}",
-    fin = fin.map(f => s"${prefix}_${f}"),
+    start = (prefix,start),
+    fin = fin.map(f => (prefix,f)),
     transitions = transitions.map(t =>
       TransducerTransition(
-        from = s"${prefix}_${t.from}",
-        to = s"${prefix}_${t.to}",
+        from = (prefix,t.from),
+        to = (prefix,t.to),
         in = t.in,
         out = t.out,
         id = s"${prefix}_${t.id}",

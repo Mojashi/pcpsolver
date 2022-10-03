@@ -37,3 +37,23 @@ implicit class PrettyPrintMap[K, V](val map: Map[K, V]) {
   }
 
 }
+
+implicit class PrettyPrintSet[V](val s: Set[V]) {
+  def prettyPrint: PrettyPrintSet[V] = this
+
+  override def toString: String = {
+    val valuesString = toStringLines.mkString("\n")
+
+    "Set (\n" + valuesString + "\n)"
+  }
+
+  def toStringLines = {
+    s.map{ case (v) => v.toString}
+  }
+
+
+  def indentLine(line: String): String = {
+    "\t" + line
+  }
+
+}
