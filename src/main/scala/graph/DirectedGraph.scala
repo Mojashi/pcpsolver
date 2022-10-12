@@ -1,10 +1,14 @@
 package graph
 
+import com.google.ortools.graph.MaxFlow
+import com.google.ortools.linearsolver.MPSolver
 import presburger.*
+import util.{MPContext, MPInf,MPNegInf, UnionFind, timer}
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
-import scala.collection.mutable.{ArrayBuffer, ListBuffer, Set as MutableSet, Map as MutableMap}
+import scala.collection.mutable
+import scala.collection.mutable.{ArrayBuffer, ListBuffer, Map as MutableMap, Set as MutableSet}
 import scala.sys.process.{Process, ProcessIO}
 
 type EdgeId = String
@@ -36,6 +40,11 @@ class DirectedGraph[V, E <: EdgeLike[V]]
   val edgesMap: Map[V, Seq[E]] = {
     edges.groupBy(t => t.from)
   }
+
+  val edgesMapByTarget: Map[V, Seq[E]] = {
+    edges.groupBy(t => t.to)
+  }
+
   val idToedgesMap: Map[EdgeId, E] =
     edges.map(t => (t.id, t)).toMap
     
@@ -72,7 +81,7 @@ class DirectedGraph[V, E <: EdgeLike[V]]
   }
 
   def targetTo(q: V): Seq[E] = {
-    edges.filter(t => t.to == q)
+    edgesMapByTarget.getOrElse(q, Seq())
   }
 
   val distanceVar = (q: V) => Variable(s"z_${q}")
@@ -82,9 +91,152 @@ class DirectedGraph[V, E <: EdgeLike[V]]
   private val SumYdTargetToQ = (q: V) => Variable(s"sum_y_target_${q}")
   private val SumYdSourceFrQ = (q: V) => Variable(s"sum_y_source_${q}")
 
-  def edgeUseCountIsPositiveConstraint = {
+  class MPGraphVars(implicit ctx: MPContext) {
+    val edgeUseCountMinus05Vars = (e: EdgeId) =>
+      if (ctx.integerEnabled)
+        edgeUseCountVars(e)
+      else {
+        ctx.vars.getOrElseUpdate(EdgeUseCountVar(e).name + "-0.5", op = {
+          val newVar = ctx.solver.makeNumVar(-0.5, MPInf, EdgeUseCountVar(e).name)
+          val cons = ctx.solver.makeConstraint(0.5, 0.5)
+          cons.setCoefficient(edgeUseCountVars(e), 1)
+          cons.setCoefficient(newVar, -1)
 
+          newVar
+        })
+      }
+    val edgeUseCountVars = (e: EdgeId) =>
+      if(ctx.integerEnabled)
+        ctx.vars.getOrElseUpdate(EdgeUseCountVar(e).name, ctx.solver.makeIntVar(0, MPInf, EdgeUseCountVar(e).name))
+      else {
+        ctx.vars.getOrElseUpdate(EdgeUseCountVar(e).name, op = {
+          assert(!ctx.vars.contains(e))
+          val newVar = ctx.solver.makeNumVar(0, MPInf, EdgeUseCountVar(e).name)
+//          val distVar = ctx.solver.makeNumVar(0, MPInf, EdgeUseCountVar(e).name)
+//          val relaxedIntCons1 = ctx.solver.makeConstraint(MPNegInf,0.5)
+//          relaxedIntCons1.setCoefficient(newVar, 1)
+//          relaxedIntCons1.setCoefficient(distVar, -1)
+//
+//          val relaxedIntCons2 = ctx.solver.makeConstraint( 0.5, MPInf)
+//          relaxedIntCons2.setCoefficient(newVar, 1)
+//          relaxedIntCons2.setCoefficient(distVar, 1)
+//
+//          ctx.solver.objective().setCoefficient(distVar, 1)
+          newVar
+        })
+      }
   }
+
+  def flowConstraintInLP(source: V, sink: V)(implicit ctx: MPContext) = {
+    val solver = ctx.solver
+    val vars = MPGraphVars()
+
+    states.foreach(s => {
+      val sum = (if(s == sink) 1 else 0) - (if(s == source) 1 else 0)
+      val cons = solver.makeConstraint(sum, sum)
+
+      sourceFrom(s).foreach(going =>
+        cons.setCoefficient(vars.edgeUseCountVars(going.id), -1)
+      )
+      targetTo(s).foreach(coming =>
+        cons.setCoefficient(vars.edgeUseCountVars(coming.id), 1)
+      )
+    })
+  }
+
+
+  def connectivityConstraintInLPWithIndegreeEQ(start: V, edgeUseCount: Map[EdgeId, Int])(implicit ctx: MPContext) = {
+    val vars = MPGraphVars()
+
+    val uf = getConnectedComponent(edgeUseCount)
+    val startComponent = uf.find(start)
+
+    val components = uf.findRoots.diff(Set(startComponent))
+
+    println(components.size)
+    println(states.filter(s => uf.find(s) == components.head).toSeq.map(s => s.hashCode()).sorted)
+
+    components.foreach(target => {
+      val cons = ctx.solver.makeConstraint(0, MPInf)
+
+      val vs = states.filter(s => uf.find(s) == target)
+      val innerEdges = edgeUseCount.filter((eid, count) =>  vs.contains(idToedgesMap(eid).from) && vs.contains(idToedgesMap(eid).to))
+      val incomings = vs.flatMap(targetTo).filter(e => !vs.contains(e.from))
+
+      println(innerEdges.size)
+      println(incomings.size)
+
+      innerEdges.keys.foreach(v => {
+        cons.setCoefficient(vars.edgeUseCountVars(v), -1)
+      })
+      incomings.foreach(v => {
+        cons.setCoefficient(vars.edgeUseCountVars(v.id), 10000)
+      })
+    })
+  }
+
+  def connectivityConstraintInLP(start: V, edgeUseCount: Map[EdgeId, Int])(implicit ctx: MPContext) = {
+
+    val vars = MPGraphVars()
+
+    val uf = getConnectedComponent(edgeUseCount)
+    val startComponent = uf.find(start)
+
+    val components = uf.findRoots.diff(Set(startComponent))
+
+    val vertexIdx: Map[V, Int] = states.toSeq.zipWithIndex.toMap
+
+    val mf = MaxFlow()
+
+    edges.foreach(t => {
+      val fc = uf.find(t.from)
+      val tc = uf.find(t.to)
+      mf.addArcWithCapacity(vertexIdx(t.from), vertexIdx(t.to),
+        if (fc == tc) Long.MaxValue / 10
+        else 1
+      )
+    })
+    val edgeIdToIdx: Map[EdgeId, Int] = edges.zipWithIndex.map((e,idx) => (e.id, idx)).toMap
+
+    println(components.size)
+    println(states.filter(s=>uf.find(s) == components.head).toSeq.map(s=>s.hashCode()).sorted)
+
+    components.foreach(target => {
+      assert(mf.solve(vertexIdx(start), vertexIdx(target)) == MaxFlow.Status.OPTIMAL)
+//      val flowE = edges.zipWithIndex.map((e, idx) => (e.id, Math.min(30, mf.getCapacity(idx) - mf.getFlow(idx)).toInt)).toMap
+//      saveSVG("flowE", "", flowE)
+
+      val cut = {
+        val reachable = mutable.HashSet[V]()
+        val que = mutable.Queue[V](start)
+        while (que.nonEmpty) {
+          val s = que.dequeue()
+          if (!reachable.contains(s)) {
+            reachable.add(s)
+            que.addAll(sourceFrom(s).filter(e => mf.getFlow(edgeIdToIdx(e.id)) < mf.getCapacity(edgeIdToIdx(e.id))).filter(e => !reachable.contains(e.to)).map(_.to))
+            que.addAll(targetTo(s).filter(e => mf.getFlow(edgeIdToIdx(e.id)) > 0).filter(e => !reachable.contains(e.from)).map(_.from))
+          }
+        }
+
+        edges.filter(e => {
+          mf.getCapacity(edgeIdToIdx(e.id)) > 0 && reachable.contains(e.from) && !reachable.contains(e.to)
+        })
+      }
+      assert(cut.size == mf.getOptimalFlow)
+
+      val cons = ctx.solver.makeConstraint(0, MPInf)
+      cut.foreach(e =>
+        cons.setCoefficient(vars.edgeUseCountVars(e.id), 10000)
+      )
+
+      val vs = states.filter(s => uf.find(s) == target)
+      val innerEdges = edgeUseCount.filter((eid, count) => vs.contains(idToedgesMap(eid).from) && vs.contains(idToedgesMap(eid).to))
+      innerEdges.keys.foreach(wa =>
+        cons.setCoefficient(vars.edgeUseCountVars(wa), -1)
+      )
+    })
+  }
+
 
   def pathConstraint: ExistentialPresburgerFormula = {
     val notReached = (q: V) => And(
@@ -216,7 +368,7 @@ class DirectedGraph[V, E <: EdgeLike[V]]
   }
 
   def solveEdgeUseCount(constraint: ExistentialPresburgerFormula): Option[Map[EdgeId, Int]] = {
-      PresburgerFormulaSolver().solve(constraint) match {
+      PresburgerFormulaSolver().solveWithZ3(constraint) match {
         case Some(m) =>
 //          println(m.prettyPrint)
           Some(edges.map(trans =>
@@ -242,10 +394,14 @@ class DirectedGraph[V, E <: EdgeLike[V]]
     ret.toSet
   }
 
-  def printDot(name: String = "", useCountMap:Map[EdgeId, Int] = Map()): String =
-    s"""digraph $name {
-       ${edges.map { e => s"\"${e.from}\" -> \"${e.to}\" [label=\"${e}\", style = ${if(useCountMap.isEmpty || useCountMap.getOrElse(e.id, 0) > 0) "solid" else "dotted" }];" }.mkString("\n")}
-       }"""
+  def printDot(name: String = "", useCountMap:Map[EdgeId, Int] = Map(), additional:String=""): String =
+    s"digraph $name {\n" + additional + "\n" + (
+      if(useCountMap.isEmpty)
+         edges.map { e => s"\"${e.from}\" -> \"${e.to}\" [label=\"${e}\", style = solid ];" }.mkString("\n")
+      else
+//        edges.map { e => s"\"${e.from}\" -> \"${e.to}\" [label=\"${e}\n${useCountMap.getOrElse(e.id, 0)}\", style = ${if (useCountMap.getOrElse(e.id, 0) > 0) "solid" else "dotted"}];" }.mkString("\n")
+          edges.filter(e => useCountMap.getOrElse(e.id, 0) > 0).map { e => s"\"${e.from}\" -> \"${e.to}\" [label=\"${e}\n${useCountMap.getOrElse(e.id, 0)}\", style = ${if (useCountMap.getOrElse(e.id, 0) > 0) "solid" else "dotted"}];" }.mkString("\n")
+    ) + "}"
 
   def saveDot(fileName: String, name: String = "", useCountMap:Map[EdgeId, Int] = Map()): Unit = {
     Files.write(Paths.get(fileName), printDot(name, useCountMap).getBytes(StandardCharsets.UTF_8))
@@ -258,32 +414,20 @@ class DirectedGraph[V, E <: EdgeLike[V]]
       Process(s"dot -Tsvg ${baseName + ".dot"}").!!.getBytes(StandardCharsets.UTF_8)
     )
   }
-}
 
-implicit class PrettyPrintMap[K, V](val map: Map[K, V]) {
-  def prettyPrint: PrettyPrintMap[K, V] = this
+  def getConnectedComponent(edgeUseCount: Map[EdgeId, Int]): UnionFind[V] = {
+    val uf = UnionFind[V]()
 
-  override def toString: String = {
-    val valuesString = toStringLines.mkString("\n")
+    edgeUseCount.map((id, count) => {
+      if (count > 0) {
+        uf.union(idToedgesMap(id).from, idToedgesMap(id).to)
+      }
+    })
 
-    "Map (\n" + valuesString + "\n)"
+    uf
   }
-
-  def toStringLines = {
-    map
-      .flatMap{ case (k, v) => keyValueToString(k, v)}
-      .map(indentLine(_))
-  }
-
-  def keyValueToString(key: K, value: V): Iterable[String] = {
-    value match {
-      case v: Map[_, _] => Iterable(key.toString + " -> Map (") ++ v.prettyPrint.toStringLines ++ Iterable(")")
-      case x => Iterable(key.toString + " -> " + x.toString)
-    }
-  }
-
-  def indentLine(line: String): String = {
-    "\t" + line
+  def isConnected(edgeUseCount: Map[EdgeId, Int]): Boolean = {
+    getConnectedComponent(edgeUseCount).findRoots.size == 1
   }
 
 }

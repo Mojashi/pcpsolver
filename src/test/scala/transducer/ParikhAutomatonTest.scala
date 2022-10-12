@@ -21,7 +21,7 @@ class ParikhAutomatonTest extends AnyFunSuite {
     )
 
     val pa = t.parikhAutomaton
-    print(t.solveInputWord(
+    print(transducerInToNFA(t).solveInputWord(
       AndList(List(
         Equal(
           pa.KeyCountVar('a'),

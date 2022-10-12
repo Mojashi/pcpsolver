@@ -23,7 +23,7 @@ class TransducerTest extends AnyFunSuite {
 
   test("testSolve") {
     val nf = t.normalForm
-    print(nf.solveInputWord(nf.acceptConstraint))
+    print(transducerInToNFA(nf).solveInputWord(transducerInToNFA(nf).acceptConstraint))
   }
 
   test("mergeTest") {
@@ -41,16 +41,17 @@ class TransducerTest extends AnyFunSuite {
 
     val tnf = t.normalForm
     val t2nf = t2.normalForm
-    val tracker = EdgeUseCountTracker()
-    val nf = tnf.combine(t2nf, tracker)
+    implicit val tracker = EdgeUseCountTracker()
+
+    val nf = tnf.combine(t2nf)
     nf.saveSVG("nf")
     tnf.saveSVG("t")
     t2nf.saveSVG("t2")
     val pa = nf.parikhAutomaton
     println(tracker)
-    print(nf.solveInputWord(
+    print(transducerInToNFA(nf).solveInputWord(
       AndList(List(
-        AndList(List(nf.acceptConstraint)),
+        AndList(List(transducerInToNFA(nf).acceptConstraint)),
         pa.chCountPresburgerFormula,
         GreaterThan(pa.KeyCountVar('a'), Constant(1)),
 //        tracker.formula

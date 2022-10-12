@@ -64,6 +64,12 @@ object Instances {
     Tile("0", "110"),
   ))
 
+  // UNSOLVABLE!!
+  // words = Seq("0010", "1001", "10", "001"))
+  // val alignPrefLen(addPrefixToNFA) = 2
+
+  // words: List(00, 01, 0010, 10010), alignPrefLen: 2
+
   val pcpUnsolved6 = PCP(List(
     Tile("10", "0"),
     Tile("0", "001"),
@@ -156,4 +162,32 @@ object Instances {
   //
   //プロセスは終了コード 1 で終了しました
 
+
+  //1111  1101  11
+  //1110  1     1111
+  val pcp34Unsolved = PCP(List(
+    Tile("1111", "1110"),
+    Tile("1101", "1"),
+    Tile("11", "1111"),
+  ))
+
+  // UNSOLVED by words: ListBuffer(1, 0, 11, 10, 111), alignPrefLen: 0
+  // 111  111  000  1
+  // 110  101  00   111
+  val pcp43Unsolved = PCP(List(
+    Tile("111", "110"),
+    Tile("111", "101"),
+    Tile("000", "00"),
+    Tile("1", "111"),
+  ))
+
+  //111  111  000  11
+  //110  101  0    111
+  //words: ListBuffer(1, 0, 10), alignPrefLen: 0
+  val pcp43Unsolved2 = PCP(List(
+    Tile("111", "110"),
+    Tile("111", "101"),
+    Tile("000", "0"),
+    Tile("11", "111"),
+  ))
 }

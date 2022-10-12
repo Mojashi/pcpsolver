@@ -88,7 +88,7 @@ class NormalFormTransducer[State, InAlphabet, OutAlphabet]
   def combine[StateB, OutAlphabetB]
   (
     other: NormalFormTransducer[StateB, OutAlphabet, OutAlphabetB],
-  )(implicit tracker: EdgeUseCountTracker):
+  )(implicit tracker: EdgeUseCountTracker = EdgeUseCountTracker()):
     NormalFormTransducer[(State, StateB), InAlphabet, OutAlphabetB] = {
     tracker.newSession()
 
@@ -236,4 +236,32 @@ class NormalFormTransducer[State, InAlphabet, OutAlphabet]
     transducer.NormalFormTransducer[Any, InAlphabet, OutAlphabet](
       start, fin.toSet, normalTransitions.map(e => NormalFormTransducerTransition(e.from, e.to, e.in, e.out, e.id))
     )
+
+  def outToNFA: NFA[State, OutAlphabet] =
+    NFA(
+      start = start,
+      fin = fin,
+      transitions = normalTransitions.map(t => Transition(t.from, t.to, t.out, t.id))
+    )
+
+
+  def mapOut[To](f: OutAlphabet => To) = NormalFormTransducer[State, InAlphabet, To](
+    start = start,
+    fin = fin,
+    normalTransitions = normalTransitions.map(t => NormalFormTransducerTransition(
+      from = t.from,
+      to = t.to,
+      in = t.in,
+      out = t.out.flatMap(e => Some(f(e))),
+      id = t.id
+    ))
+  )
+
+  def mapTrans[To](f: NormalFormTransducerTransition[State, InAlphabet, OutAlphabet] => NormalFormTransducerTransition[State, InAlphabet, To]) =
+    NormalFormTransducer[State, InAlphabet, To](
+      start = start,
+      fin = fin,
+      normalTransitions = normalTransitions.map(f)
+    )
+
 }

@@ -28,7 +28,7 @@ class NFATest extends AnyFunSuite {
 
     val B = ParallelNFA(A1, A2)
     println(B.solveInputWord(B.acceptConstraint))
-    println(tracker.parts.toMap.prettyPrint)
+//    println(tracker.parts.toMap.prettyPrint)
   }
 
 }

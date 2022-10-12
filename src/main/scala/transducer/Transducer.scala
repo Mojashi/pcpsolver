@@ -115,7 +115,7 @@ extension[State, InAlphabet, OutAlphabet] (trans: Transducer[State, InAlphabet, 
 
 }
 
-implicit def transducerToNFA[State, InAlphabet, OutAlphabet](t: Transducer[State, InAlphabet, OutAlphabet]): NFA[State, InAlphabet] =
+def transducerInToNFA[State, InAlphabet, OutAlphabet](t: Transducer[State, InAlphabet, OutAlphabet]): NFA[State, InAlphabet] =
   NFA(
     start = t.start,
     fin = t.fin,

@@ -12,3 +12,8 @@ project/plugins/project/
 /.idea
 *.dot
 *.svg
+/lib/ortools-java-9.4.1874.jar
+/lib/com.microsoft.z3.jar
+/lib/cvc5.jar
+/34_unsol/
+/PCP[4,3]Unsolved/

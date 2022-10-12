@@ -10,7 +10,7 @@ type IntVector[Key] = Map[Key, Int]
 
 class IntVectorMonoid[Key] extends Monoid[IntVector[Key]] {
   override def plus(l: IntVector[Key], r: IntVector[Key]): IntVector[Key] = {
-    (l.keys ++ r.keys).map(key => (key, l(key) + r(key))).toMap
+    (l.keys ++ r.keys).map(key => (key, l.getOrElse(key, 0) + r.getOrElse(key, 0))).toMap
   }
   override val unit = Map()
 }

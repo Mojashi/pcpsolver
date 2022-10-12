@@ -1,10 +1,9 @@
 package automaton
 
 import dataType.{IntVector, IntVectorMonoid}
-import graph.{DirectedGraph, EdgeId, EdgeLike}
+import graph.{DirectedGraph, EdgeId, EdgeLike, UniqueEdgeId}
 import presburger.{Add, AndList, Constant, Equal, ExistentialPresburgerFormula, Mul}
-
-import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.{ListBuffer, Map as MutableMap}
 
 extension[Alphabet] (s: Seq[Alphabet]) {
   def consume(a: Option[Alphabet]): Seq[Alphabet] =
@@ -23,7 +22,7 @@ extension[Alphabet] (s: Seq[Alphabet]) {
 case class Transition[State, Alphabet]
 (from: State, to: State, in: Alphabet, id: EdgeId)
   extends EdgeLike[State] {
-  override def toString: _root_.java.lang.String = s"$in\n$id"
+  override def toString: String = s"$in\n$id"
 }
 
 class EPSFreeNFA[State, Alphabet]
@@ -49,6 +48,61 @@ class NFA[State, Alphabet]
 
   def this(nfa: NFA[State,Alphabet]) = {
     this(nfa.start, nfa.fin,nfa.transitions)
+  }
+
+  override def printDot(name: String = "", useCountMap: Map[EdgeId, Int] = Map(), additional:String = ""): String =
+    super.printDot(name, useCountMap, additional + "\n" + s"\"$start\" [peripheries=2];\n" + fin.map(f => s"\"$f\" [shape=box];").mkString("\n"))
+
+  def setSingleFin: NFA[Either[State, String], Alphabet] = {
+    val newFin = Right("newFin")
+    NFA(
+      start = Left(start),
+      fin = Set(newFin),
+      transitions = transitions.map(t =>
+        Transition(
+          from = Left(t.from),
+          to = Left(t.to),
+          in = t.in,
+          id = t.id
+        )
+      ) ++ fin.map(f =>
+        Transition(
+          from = Left(f),
+          to = newFin,
+          in = None,
+          id = s"newFin($f)"
+        )
+      )
+    )
+  }
+
+  def setNewStartFinState: NFA[Either[State, String], Alphabet] = {
+    val newFin = Right("newFin")
+    val newStart = Right("newStart")
+    NFA(
+      start = newStart,
+      fin = Set(newFin),
+      transitions = transitions.map(t=>
+        Transition(
+          from = Left(t.from),
+          to = Left(t.to),
+          in = t.in,
+          id = t.id
+        )
+      ) ++ fin.map(f =>
+        Transition(
+          from = Left(f),
+          to = newFin,
+          in = None,
+          id = s"newFin($f)"
+        )
+      ) ++ Seq(Transition(
+        from = newStart,
+        to = Left(start),
+        in = None,
+        id = s"newStart(${start})"
+      ))
+    )
   }
 
   def accept(word: Seq[Alphabet]): Boolean = {
@@ -113,9 +167,39 @@ class NFA[State, Alphabet]
     )(m)
   }
 
+  def getUseCount(word: List[Alphabet]): Map[EdgeId, Int] = {
+    val reached = Set[(State, Seq[Alphabet])]()
+    val useCount = MutableMap[EdgeId, Int]()
+
+    def f(word: Seq[Alphabet], from: State = start): Boolean = {
+      if (reached.contains((from, word)))
+        false
+      else {
+        if (word.isEmpty)
+          fin.contains(from)
+        else {
+          val trans = sourceFrom(from)
+            .filter(trans => word.consumable(trans.in))
+            .find(trans => f(word.consume(trans.in), trans.to))
+          trans match
+            case Some(t) => useCount(t.id) = useCount.getOrElse(t.id, 0) + 1
+
+          trans.isDefined
+        }
+      }
+    }
+
+    f(word)
+    useCount.toMap
+  }
 
   def stateAny() =
     NFA[Any, Alphabet](
       start, fin.toSet, transitions.map(e => Transition(e.from, e.to, e.in, e.id))
     )
+    
+  def uniquify = NFA(
+    start, fin,
+    transitions.map(t => Transition(t.from, t.to, t.in, UniqueEdgeId.get))
+  )
 }

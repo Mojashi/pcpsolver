@@ -23,7 +23,7 @@ object DTransducerOverSolver extends App {
       val watcher = getCompleteNFA(s, pcp.alphabets)
       s+=1
       watcher.saveSVG("watcher")
-      val ans = pcp.solveWithWathcer(watcher.stateAny(), None)
+      val ans = pcp.solveWithWatcher(watcher.stateAny(), None)
       println(ans)
       println(ans.flatMap{a=>Some(a.groupBy(v=>v).mapValues(s=>s.size).toMap)})
       val (o1, o2) = pcp.transduce(ans.get)

@@ -14,20 +14,4 @@ class PCPTest extends AnyFunSuite {
 //
 //    print(pcp)
 //  }
-
-  test("z3pcp") {
-    val ctx = Context()
-
-    val s1 = ctx.mkString("aaa") 
-    val v = ctx.mkConst("out", ctx.mkStringSort())
-
-    val s2 = ctx.mkEq(v, ctx.mkReplace(s1, ctx.mkToRe(ctx.mkString("a")), ctx.mkString("b")))
-
-    val s = ctx.mkSolver()
-    s.add(s2)
-
-    s.check()
-    val m = s.getModel
-    println(m.evaluate(v, true).toString)
-  }
 }
