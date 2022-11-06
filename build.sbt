@@ -7,7 +7,7 @@ lazy val root = (project in file("."))
     name := "pcpsolver"
   )
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.14" % Test
+libraryDependencies += "com.softmotions"%"ejdb2"%"EJDB2"
 libraryDependencies += "com.google.protobuf" % "protobuf-java" % "3.21.7"
 libraryDependencies += "com.google.guava" % "guava"% "30.1.1-jre"
 
-libraryDependencies += "org.iq80.leveldb" % "leveldb" % "0.12"

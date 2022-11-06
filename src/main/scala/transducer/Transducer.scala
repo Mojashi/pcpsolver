@@ -13,9 +13,14 @@ type State = String
 case class TransducerTransition[State, InAlphabet, Label]
   (from: State, to: State, in: InAlphabet, out: Label, id: EdgeId)
   extends EdgeLike[State] {
-  override def toString: _root_.java.lang.String = s"$in / $out\n$id"
+  override def toString: String = s"$in / $out"
 }
 
+class ListTransducerTransition[State, InAlphabet, Label]
+(from: State, to: State, in: Option[InAlphabet], out: List[Label], id: EdgeId)
+  extends TransducerTransition[State, Option[InAlphabet], List[Label]](from, to, in, out, id) {
+  override def toString = s"${if (in.isDefined) in.get else "ε"}/${if (out.isEmpty) "ε" else out.mkString}"
+}
 class EPSFreeTransducer[State, InAlphabet, OutMonoid: Monoid]
 (
   start: State,
@@ -33,6 +38,10 @@ class Transducer[State, InAlphabet, OutMonoid: Monoid]
 ) extends DirectedGraph[State, TransducerTransition[State, Option[InAlphabet], OutMonoid]](transitions) {
   private val outM = implicitly[Monoid[OutMonoid]]
   type T = TransducerTransition[State, Option[InAlphabet], OutMonoid]
+
+  override def printDot[T: Numeric](name: String = "", useCountMap: Map[EdgeId, T] = Map(), additional: String = ""): String =
+    super.printDot(name, useCountMap, additional + "\n superstart[shape = point ];\n" + s"superstart->\"$start\"\n" + fin.map(f => s"\"$f\" [shape=doublecircle];").mkString("\n"))
+
 
   def accept(word: Seq[InAlphabet]): Option[OutMonoid] = {
     val reached = Set[(State, Seq[InAlphabet])]()
@@ -62,15 +71,15 @@ class Transducer[State, InAlphabet, OutMonoid: Monoid]
   def addPrefix(prefix: String) = Transducer(
     start = (prefix,start),
     fin = fin.map(f => (prefix,f)),
-    transitions = transitions.map(t =>
+    transitions = transitions.map(t => {
       TransducerTransition(
-        from = (prefix,t.from),
-        to = (prefix,t.to),
+        from = (prefix, t.from),
+        to = (prefix, t.to),
         in = t.in,
         out = t.out,
         id = s"${prefix}_${t.id}",
       )
-    )
+    })
   )
 
 }

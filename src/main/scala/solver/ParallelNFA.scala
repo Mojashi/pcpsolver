@@ -22,8 +22,8 @@ class ParallelNFA[StateA, StateB, Alphabet]
   nt ++= left.transitions.filter(t1 => t1.in.isDefined).flatMap(t1 =>
     right.transitions.filter(t2 => t2.in == t1.in).map(t2 => {
       val id = s"pr(${t1.id},${t2.id})"
-      tracker.AddPart(EdgeUseCountVar(t1.id), EdgeUseCountVar(id))
-      tracker.AddPart(EdgeUseCountVar(t2.id), EdgeUseCountVar(id))
+      tracker.AddPart(t1.id, id)
+      tracker.AddPart(t2.id, id)
       Transition(
         from = (t1.from, t2.from),
         to = (t1.to, t2.to),
@@ -36,7 +36,7 @@ class ParallelNFA[StateA, StateB, Alphabet]
   nt ++= left.transitions.filter(t1 => t1.in.isEmpty).flatMap(t1 =>
     right.states.map(s => {
       val id = s"pr_none1${t1.id},${s})"
-      tracker.AddPart(EdgeUseCountVar(t1.id), EdgeUseCountVar(id))
+      tracker.AddPart(t1.id, id)
       Transition(
         from = (t1.from, s),
         to = (t1.to, s),
@@ -49,7 +49,7 @@ class ParallelNFA[StateA, StateB, Alphabet]
   nt ++= right.transitions.filter(t2 => t2.in.isEmpty).flatMap(t2 =>
     left.states.map(s => {
       val id = s"pr_none2${t2.id},${s})"
-      tracker.AddPart(EdgeUseCountVar(t2.id), EdgeUseCountVar(id))
+      tracker.AddPart(t2.id, id)
       Transition(
         from = (s, t2.from),
         to = (s, t2.to),

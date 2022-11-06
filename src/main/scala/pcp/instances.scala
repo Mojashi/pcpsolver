@@ -18,6 +18,14 @@ object Instances {
     Tile("1", "100"),
   ))
 
+  //110   1     0
+  //1     0     110
+  val hardest33 = PCP(List(
+    Tile("110", "1"),
+    Tile("1", "0"),
+    Tile("0", "110"),
+  ))
+  
   //111  111  000  1
   //110  101  00   111
   // UNSOLVABLE!!

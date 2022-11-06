@@ -44,9 +44,6 @@ class TransducerTest extends AnyFunSuite {
     implicit val tracker = EdgeUseCountTracker()
 
     val nf = tnf.combine(t2nf)
-    nf.saveSVG("nf")
-    tnf.saveSVG("t")
-    t2nf.saveSVG("t2")
     val pa = nf.parikhAutomaton
     println(tracker)
     print(transducerInToNFA(nf).solveInputWord(

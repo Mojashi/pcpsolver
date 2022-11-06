@@ -5,7 +5,7 @@ import io.github.cvc5.{Kind, Solver as CVCSolver, Term as CVCTerm}
 import scala.collection.mutable.Map as MutableMap
 
 type VarName = String
-type VarValueMap = Map[VarName, Int]
+type VarValueMap[T] = Map[VarName, T]
 
 case class CVCContext
 (
@@ -14,7 +14,7 @@ case class CVCContext
 )
 
 trait ExistentialPresburgerFormula {
-  def eval(implicit m: VarValueMap): Boolean
+  def eval(implicit m: VarValueMap[Int]): Boolean
   def z3Expr(implicit ctx: Context): BoolExpr
 
   def cvcExpr(implicit ctx: CVCContext): CVCTerm
@@ -23,7 +23,7 @@ trait ExistentialPresburgerFormula {
 }
 private type EPF = ExistentialPresburgerFormula
 case class Not(epf: EPF) extends ExistentialPresburgerFormula {
-  override def eval(implicit m: VarValueMap): Boolean = !epf.eval(m)
+  override def eval(implicit m: VarValueMap[Int]): Boolean = !epf.eval(m)
 
   override def z3Expr(implicit ctx: Context): BoolExpr = ctx.mkNot(epf.z3Expr)
 
@@ -34,7 +34,7 @@ case class Not(epf: EPF) extends ExistentialPresburgerFormula {
   override def cvcExpr(implicit ctx: CVCContext): CVCTerm = epf.cvcExpr.notTerm()
 }
 case class Equal(left: PE, right: PE) extends ExistentialPresburgerFormula {
-  override def eval(implicit m: VarValueMap): Boolean = left.eval(m) == right.eval(m)
+  override def eval(implicit m: VarValueMap[Int]): Boolean = left.eval(m) == right.eval(m)
 
   override def z3Expr(implicit ctx: Context): BoolExpr = ctx.mkEq(left.z3Expr, right.z3Expr)
 
@@ -46,7 +46,7 @@ case class Equal(left: PE, right: PE) extends ExistentialPresburgerFormula {
 }
 
 case class GreaterThan(left: PE, right: PE) extends ExistentialPresburgerFormula {
-  override def eval(implicit m: VarValueMap): Boolean = left.eval(m) > right.eval(m)
+  override def eval(implicit m: VarValueMap[Int]): Boolean = left.eval(m) > right.eval(m)
 
   override def z3Expr(implicit ctx: Context): BoolExpr = ctx.mkGt(left.z3Expr, right.z3Expr)
   override def enumerateVar: Set[VarName] = left.enumerateVar ++ right.enumerateVar
@@ -57,7 +57,7 @@ case class GreaterThan(left: PE, right: PE) extends ExistentialPresburgerFormula
 }
 
 case class GreaterThanOrEqual(left: PE, right: PE) extends ExistentialPresburgerFormula {
-  override def eval(implicit m: VarValueMap): Boolean = left.eval(m) >= right.eval(m)
+  override def eval(implicit m: VarValueMap[Int]): Boolean = left.eval(m) >= right.eval(m)
   
   override def z3Expr(implicit ctx: Context): BoolExpr = ctx.mkGe(left.z3Expr, right.z3Expr)
   override def enumerateVar: Set[VarName] = left.enumerateVar ++ right.enumerateVar
@@ -67,7 +67,7 @@ case class GreaterThanOrEqual(left: PE, right: PE) extends ExistentialPresburger
   override def cvcExpr(implicit ctx: CVCContext): CVCTerm = ctx.solver.mkTerm(Kind.GEQ, left.cvcExpr, right.cvcExpr)
 }
 case class And(left: EPF, right: EPF) extends ExistentialPresburgerFormula {
-  override def eval(implicit m: VarValueMap): Boolean = left.eval(m) && right.eval(m)
+  override def eval(implicit m: VarValueMap[Int]): Boolean = left.eval(m) && right.eval(m)
 
   override def z3Expr(implicit ctx: Context): BoolExpr = ctx.mkAnd(left.z3Expr, right.z3Expr)
   override def enumerateVar: Set[VarName] = left.enumerateVar ++ right.enumerateVar
@@ -77,7 +77,7 @@ case class And(left: EPF, right: EPF) extends ExistentialPresburgerFormula {
   override def cvcExpr(implicit ctx: CVCContext): CVCTerm = left.cvcExpr.andTerm(right.cvcExpr)
 }
 case class Or(left: EPF, right: EPF) extends ExistentialPresburgerFormula {
-  override def eval(implicit m: VarValueMap): Boolean = left.eval(m) || right.eval(m)
+  override def eval(implicit m: VarValueMap[Int]): Boolean = left.eval(m) || right.eval(m)
 
   override def z3Expr(implicit ctx: Context): BoolExpr = ctx.mkOr(left.z3Expr, right.z3Expr)
   override def enumerateVar: Set[VarName] = left.enumerateVar ++ right.enumerateVar
@@ -92,7 +92,7 @@ case object True extends ExistentialPresburgerFormula {
 
   override def z3Expr(implicit ctx: Context): BoolExpr = ctx.mkBool(true)
 
-  override def eval(implicit m: VarValueMap): Boolean = true
+  override def eval(implicit m: VarValueMap[Int]): Boolean = true
 
   override def map(f: AtomicPresburgerExpression => PresburgerExpression) = this
 
@@ -104,7 +104,7 @@ case object False extends ExistentialPresburgerFormula {
 
   override def z3Expr(implicit ctx: Context): BoolExpr = ctx.mkBool(false)
 
-  override def eval(implicit m: VarValueMap): Boolean = false
+  override def eval(implicit m: VarValueMap[Int]): Boolean = false
 
   override def map(f: AtomicPresburgerExpression => PresburgerExpression) = this
 
@@ -112,7 +112,7 @@ case object False extends ExistentialPresburgerFormula {
 }
 
 trait PresburgerExpression {
-  def eval(implicit m: VarValueMap): Int
+  def eval(implicit m: VarValueMap[Int]): Int
   def z3Expr(implicit ctx: Context): ArithExpr[IntSort]
   def cvcExpr(implicit ctx: CVCContext): CVCTerm
   def enumerateVar: Set[VarName]
@@ -120,7 +120,7 @@ trait PresburgerExpression {
 }
 trait AtomicPresburgerExpression extends PresburgerExpression
 case class Constant(v: Int) extends PE, AtomicPresburgerExpression {
-  override def eval(implicit m: VarValueMap): Int = v
+  override def eval(implicit m: VarValueMap[Int]): Int = v
 
   override def z3Expr(implicit ctx: Context) = ctx.mkInt(v)
 
@@ -131,7 +131,7 @@ case class Constant(v: Int) extends PE, AtomicPresburgerExpression {
   override def map(f: AtomicPresburgerExpression => PresburgerExpression) = f(this)
 }
 case class Variable(name: VarName) extends PE, AtomicPresburgerExpression {
-  override def eval(implicit m: VarValueMap): Int = m(name)
+  override def eval(implicit m: VarValueMap[Int]): Int = m(name)
 
   override def z3Expr(implicit ctx: Context) = ctx.mkIntConst(name)
 
@@ -142,7 +142,7 @@ case class Variable(name: VarName) extends PE, AtomicPresburgerExpression {
   override def cvcExpr(implicit ctx: CVCContext): CVCTerm = ctx.variableRegistry.getOrElseUpdate(name, ctx.solver.mkConst(ctx.solver.getIntegerSort, name))
 }
 case class Add(left: PE, right: PE) extends PE {
-  override def eval(implicit m: VarValueMap): Int = left.eval(m) + right.eval(m)
+  override def eval(implicit m: VarValueMap[Int]): Int = left.eval(m) + right.eval(m)
 
   override def z3Expr(implicit ctx: Context) = ctx.mkAdd(left.z3Expr, right.z3Expr)
 
@@ -155,7 +155,7 @@ case class Add(left: PE, right: PE) extends PE {
 
 // for convenience
 case class Sub(left: PE, right: PE) extends PE {
-  override def eval(implicit m: VarValueMap): Int = left.eval(m) - right.eval(m)
+  override def eval(implicit m: VarValueMap[Int]): Int = left.eval(m) - right.eval(m)
 
   override def z3Expr(implicit ctx: Context) = ctx.mkSub(left.z3Expr, right.z3Expr)
 
@@ -168,7 +168,7 @@ case class Sub(left: PE, right: PE) extends PE {
 
 // ????
 case class Mul(left: Constant, right: PE) extends PE {
-  override def eval(implicit m: VarValueMap): Int = left.eval(m) * right.eval(m)
+  override def eval(implicit m: VarValueMap[Int]): Int = left.eval(m) * right.eval(m)
 
   override def z3Expr(implicit ctx: Context) = ctx.mkMul(left.z3Expr, right.z3Expr)
 

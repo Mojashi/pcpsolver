@@ -10,7 +10,7 @@ import scala.collection.mutable.ListBuffer
 case class NormalFormTransducerTransition[State, InAlphabet, OutAlphabet]
 (from: State, to: State, in: Option[InAlphabet], out: Option[OutAlphabet], id: EdgeId)
   extends EdgeLike[State] {
-  override def toString: _root_.java.lang.String = s"$in / $out\n$id"
+  override def toString: _root_.java.lang.String = s"${if(in.isDefined) in.get else "ε"}/${if(out.isDefined) out.get else "ε"}"
 }
 
 class NormalFormTransducer[State, InAlphabet, OutAlphabet]
@@ -39,8 +39,8 @@ class NormalFormTransducer[State, InAlphabet, OutAlphabet]
           .filter(t2 => t2.in == t1.out && t2.in.isDefined)
           .map[Transition[(State, StateB), Option[InAlphabet]]](t2 => {
             val id = s"(${t1.id},${t2.id})"
-            tracker.AddPart(EdgeUseCountVar(t1.id), EdgeUseCountVar(id))
-            tracker.AddPart(EdgeUseCountVar(t2.id), EdgeUseCountVar(id))
+            tracker.AddPart(t1.id, id)
+            tracker.AddPart(t2.id, id)
 
             Transition(
               from = (t1.from, t2.from),
@@ -54,7 +54,7 @@ class NormalFormTransducer[State, InAlphabet, OutAlphabet]
       newTransitions ++= normalTransitions.filter(t1 => t1.out.isEmpty).flatMap(t1 =>
         other.states.map(s2 => {
           val id = s"(${t1.id},from${s2})"
-          tracker.AddPart(EdgeUseCountVar(t1.id), EdgeUseCountVar(id))
+          tracker.AddPart(t1.id, id)
 
           Transition(
             from = (t1.from, s2),
@@ -68,7 +68,7 @@ class NormalFormTransducer[State, InAlphabet, OutAlphabet]
       newTransitions ++= other.transitions.filter(t2 => t2.in.isEmpty).flatMap(t2 =>
         states.map(s1 => {
           val id = s"(from$s1,${t2.id})"
-          tracker.AddPart(EdgeUseCountVar(t2.id), EdgeUseCountVar(id))
+          tracker.AddPart(t2.id, id)
 
           Transition(
             from = (s1, t2.from),
@@ -99,8 +99,8 @@ class NormalFormTransducer[State, InAlphabet, OutAlphabet]
         .filter(t2=>t2.in==t1.out&&t2.in.isDefined)
         .map[NormalFormTransducerTransition[(State, StateB), InAlphabet, OutAlphabetB]](t2 => {
           val id = s"(${t1.id},${t2.id})"
-          tracker.AddPart(EdgeUseCountVar(t1.id), EdgeUseCountVar(id))
-          tracker.AddPart(EdgeUseCountVar(t2.id), EdgeUseCountVar(id))
+          tracker.AddPart(t1.id, id)
+          tracker.AddPart(t2.id, id)
 
           NormalFormTransducerTransition(
             from = (t1.from, t2.from),
@@ -115,7 +115,7 @@ class NormalFormTransducer[State, InAlphabet, OutAlphabet]
     newTransitions ++= normalTransitions.filter(t1 => t1.out.isEmpty).flatMap(t1 =>
       other.states.map(s2 => {
         val id = s"(${t1.id},from${s2})"
-        tracker.AddPart(EdgeUseCountVar(t1.id), EdgeUseCountVar(id))
+        tracker.AddPart(t1.id, id)
 
         NormalFormTransducerTransition(
           from = (t1.from, s2),
@@ -130,7 +130,7 @@ class NormalFormTransducer[State, InAlphabet, OutAlphabet]
     newTransitions ++= other.normalTransitions.filter(t2 => t2.in.isEmpty).flatMap(t2 =>
       states.map(s1 => {
         val id = s"(from$s1,${t2.id})"
-        tracker.AddPart(EdgeUseCountVar(t2.id), EdgeUseCountVar(id))
+        tracker.AddPart(t2.id, id)
 
         NormalFormTransducerTransition(
           from = (s1, t2.from),
@@ -184,8 +184,8 @@ class NormalFormTransducer[State, InAlphabet, OutAlphabet]
     nt ++= normalTransitions.filter(t1 => t1.in.isDefined).flatMap(t1 =>
       right.normalTransitions.filter(t2 => t2.in == t1.in).map(t2 => {
         val id = s"pr(${t1.id},${t2.id})"
-        tracker.AddPart(EdgeUseCountVar(t1.id), EdgeUseCountVar(id))
-        tracker.AddPart(EdgeUseCountVar(t2.id), EdgeUseCountVar(id))
+        tracker.AddPart(t1.id, id)
+        tracker.AddPart(t2.id, id)
         NormalFormTransducerTransition(
           from = (t1.from, t2.from),
           to = (t1.to, t2.to),
@@ -199,7 +199,7 @@ class NormalFormTransducer[State, InAlphabet, OutAlphabet]
     nt ++= normalTransitions.filter(t1 => t1.in.isEmpty).flatMap(t1 =>
       right.states.map(s => {
         val id = s"pr_none1${t1.id},${s})"
-        tracker.AddPart(EdgeUseCountVar(t1.id), EdgeUseCountVar(id))
+        tracker.AddPart(t1.id, id)
         NormalFormTransducerTransition(
           from = (t1.from, s),
           to = (t1.to, s),
@@ -213,7 +213,7 @@ class NormalFormTransducer[State, InAlphabet, OutAlphabet]
     nt ++= right.normalTransitions.filter(t2 => t2.in.isEmpty).flatMap(t2 =>
       states.map(s => {
         val id = s"pr_none2${t2.id},${s})"
-        tracker.AddPart(EdgeUseCountVar(t2.id), EdgeUseCountVar(id))
+        tracker.AddPart(t2.id, id)
         NormalFormTransducerTransition(
           from = (s, t2.from),
           to = (s, t2.to),

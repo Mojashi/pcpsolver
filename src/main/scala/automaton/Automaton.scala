@@ -15,14 +15,20 @@ extension[Alphabet] (s: Seq[Alphabet]) {
 
   def consumable(a: Option[Alphabet]): Boolean =
     a match
-      case Some(c) => s.head == c
+      case Some(c) => if(s.isEmpty) false else s.head == c
       case None => true
 }
 
 case class Transition[State, Alphabet]
 (from: State, to: State, in: Alphabet, id: EdgeId)
   extends EdgeLike[State] {
-  override def toString: String = s"$in\n$id"
+  override def toString: String = in.toString
+}
+
+class OptionTransition[State, Alphabet]
+(from: State, to: State, in: Option[Alphabet], id: EdgeId)
+  extends Transition[State, Option[Alphabet]](from, to, in, id) {
+  override def toString: String = if(in.isDefined) in.get.toString else "ε"
 }
 
 class EPSFreeNFA[State, Alphabet]
@@ -31,7 +37,7 @@ class EPSFreeNFA[State, Alphabet]
   fin: Set[State],
   val epsFreeTransitions: Seq[Transition[State, Alphabet]],
 ) extends NFA[State, Alphabet] (
-    start, fin, epsFreeTransitions.map(t=>Transition(t.from, t.to, Some(t.in), t.id))
+    start, fin, epsFreeTransitions.map(t=>OptionTransition(t.from, t.to, Some(t.in), t.id))
 ) {
   def this(nfa: EPSFreeNFA[State, Alphabet]) = {
     this(nfa.start, nfa.fin, nfa.epsFreeTransitions)
@@ -50,8 +56,8 @@ class NFA[State, Alphabet]
     this(nfa.start, nfa.fin,nfa.transitions)
   }
 
-  override def printDot(name: String = "", useCountMap: Map[EdgeId, Int] = Map(), additional:String = ""): String =
-    super.printDot(name, useCountMap, additional + "\n" + s"\"$start\" [peripheries=2];\n" + fin.map(f => s"\"$f\" [shape=box];").mkString("\n"))
+  override def printDot[T:Numeric](name: String = "", useCountMap: Map[EdgeId, T] = Map(), additional:String = ""): String =
+    super.printDot(name, useCountMap, additional + "\nsuperstart[shape = point ];\n" + s"superstart->\"$start\"\n" + fin.map(f => s"\"$f\" [shape=doublecircle];").mkString("\n"))
 
   def setSingleFin: NFA[Either[State, String], Alphabet] = {
     val newFin = Right("newFin")
@@ -167,7 +173,7 @@ class NFA[State, Alphabet]
     )(m)
   }
 
-  def getUseCount(word: List[Alphabet]): Map[EdgeId, Int] = {
+  def getUseCount(word: Seq[Alphabet]): Map[EdgeId, Int] = {
     val reached = Set[(State, Seq[Alphabet])]()
     val useCount = MutableMap[EdgeId, Int]()
 
@@ -175,14 +181,15 @@ class NFA[State, Alphabet]
       if (reached.contains((from, word)))
         false
       else {
-        if (word.isEmpty)
-          fin.contains(from)
+        if (word.isEmpty && fin.contains(from))
+          true
         else {
           val trans = sourceFrom(from)
             .filter(trans => word.consumable(trans.in))
             .find(trans => f(word.consume(trans.in), trans.to))
           trans match
             case Some(t) => useCount(t.id) = useCount.getOrElse(t.id, 0) + 1
+            case None => return false
 
           trans.isDefined
         }

@@ -12,7 +12,7 @@ import java.util.Scanner
 //   3rd & 4th lines: pairs
 //   5th line: a line break
 class InstancesParser (fileName: String){
-  private val lines = fromFile(fileName).getLines().mkString("\n").replaceAll("(/\\*[\\s\\S]*\\*/)?", "").split("\n").map(line=>line.trim).filterNot(s=>s.isEmpty)
+  private val lines = fromFile(fileName).getLines().mkString("\n").replaceAll("(/\\*[\\s\\S]*?\\*/)?", "").split("\n").map(line=>line.trim).filterNot(s=>s.isEmpty)
 
   val instances = {
     assert(lines.length % 4 == 0)

@@ -1,17 +1,16 @@
 package pcp
 
-import transducer.*
-import transducer.NormalFormTransducer
+import transducer.{NormalFormTransducer, *}
 import presburger.*
 import regex.{simplifyWithOutIncrease, toRegex}
 import dataType.*
 import graph.{EdgeUseCountVar, UniqueEdgeId}
-import automaton.{EPSFreeNFA, NFA, ParikhAutomaton, Transition, solveParikhImageToZeroWithLP}
+import automaton.{EPSFreeNFA, NFA, ParikhAutomaton, Transition, connectivityAwareSolve, solveParikhImageToZeroWithLP}
 import solver.ParallelNFA
-import util.*
+import util.{EdgeUseCountTracker, *}
 
 import scala.collection.mutable
-import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.{ListBuffer, Map as MutableMap, Set as MutableSet}
 import scala.util.Random
 case class Tile(u: String, d: String)
 
@@ -22,34 +21,83 @@ case class PCP
   System.loadLibrary("jniortools")
 
   val alphabets = tiles.flatMap(tile=>tile.d++tile.u).toSet
-  def transducers: (Transducer[String, Int, List[Char]],Transducer[String, Int, List[Char]]) =
-    (toTransducer(tiles.map(t=>t.u).toList), toTransducer(tiles.map(t=>t.d).toList))
+  val transducers =
+    (toTransducer(tiles.map(t=>t.u).toList).addPrefix("t1"), toTransducer(tiles.map(t=>t.d).toList).addPrefix("t2"))
 
   def transduce(word: Seq[Int]): (String, String) = (
       word.foldLeft("")((s, idx) => s + tiles(idx).u),
       word.foldLeft("")((s, idx) => s + tiles(idx).d),
     )
 
-  def solveWithParikhImageWatcher[Out](watcher: NormalFormTransducer[Any, Char, IntVector[Out]], maxLen: Option[Int]): Option[Seq[Int]] = {
+  def shrinkNone[Out](tt: NormalFormTransducer[Any, Int, IntVector[Out]])(implicit tracker: EdgeUseCountTracker = EdgeUseCountTracker()): NormalFormTransducer[Any, Int, IntVector[Out]] = {
+
+    var transitions = tt.normalTransitions
+
+    while(true) {
+      tracker.newSession()
+
+      val states = transitions.map(t=>t.from).toSet.intersect(transitions.map(t=>t.to).toSet)
+      val fromMap = transitions.groupBy(t=>t.from)
+      val toMap = transitions.groupBy(t=>t.to)
+      val rTarget = states.filter(s=> fromMap(s).size == 1 && toMap(s).exists(t=>t.in.isDefined) && fromMap(s).exists(t=>t.in.isEmpty))
+      if(rTarget.isEmpty)
+        return NormalFormTransducer[Any, Int, IntVector[Out]](
+          start = tt.start,
+          fin = tt.fin,
+          normalTransitions = transitions
+        )
+
+      val ivm = IntVectorMonoid[Out]()
+
+      transitions = transitions.filterNot(t => rTarget.contains(t.to) || rTarget.contains(t.from)) ++
+        rTarget.toSeq.flatMap(target => {
+          val going = fromMap(target).head
+          toMap(target).map(t => {
+            tracker.AddPart(going.id, t.id)
+
+            NormalFormTransducerTransition(
+              from = t.from,
+              to = going.to,
+              in = t.in,
+              out = Some(ivm.plus(t.out.get, going.out.get)),
+              id = t.id
+            )
+          })
+        })
+    }
+    assert(false)
+  }
+
+  def makeTT[Out](watcher: NormalFormTransducer[Any, Char, IntVector[Out]])(implicit tracker: EdgeUseCountTracker = EdgeUseCountTracker()) = {
     val (rt1, rt2) = transducers
     val (t1, t2) = (
-      rt1.addPrefix("t1").normalForm,
-      rt2.addPrefix("t2").normalForm
+      rt1.normalForm,
+      rt2.normalForm
     )
 
-    val tt1 = t1.combine(watcher)
-    val tt2 = t2.combine(watcher)
+    val tt2 = shrinkNone(t2.combine(watcher).stateAny())
+    val tt1 = shrinkNone(t1.combine(watcher).stateAny())
 
     val m = IntVectorMonoid[Out]()
-    val tt = tt1.product(tt2).mapOut {
-      case (Some(e1), Some(e2)) => m.plus(e1, e2.map((key, count) => (key, -count)))
-      case (Some(e1), None) => e1
-      case (None, Some(e2)) => e2.map((key, count) => (key, -count))
-      case (None, None) => m.unit
-    }.stateAny()
 
-    println(s"watcher.transitions.size=${watcher.transitions.size}")
-    println(s"tt.transitions.size=${tt.transitions.size}")
+    val tt: NormalFormTransducer[Any, Int, IntVector[Out]] =
+      normalizeTT(
+        tt1.product(tt2).mapOut {
+          case (Some(e1), Some(e2)) => m.plus(e1, e2.map((key, count) => (key, -count)))
+          case (Some(e1), None) => e1
+          case (None, Some(e2)) => e2.map((key, count) => (key, -count))
+          case (None, None) => m.unit
+        }.stateAny()
+      )
+    tt
+  }
+
+  def solveEUCWithParikhImageWatcher[Out](watcher: NormalFormTransducer[Any, Char, IntVector[Out]], integer: Boolean, connectivity: Boolean = true): Option[Map[EdgeId, Double]] = {
+    implicit val tracker = EdgeUseCountTracker()
+
+    val tt: NormalFormTransducer[Any, Int, IntVector[Out]] = makeTT(watcher)
+
+    val m = IntVectorMonoid[Out]()
 
     val pa = ParikhAutomaton(
       start = tt.start,
@@ -57,19 +105,89 @@ case class PCP
       transitions = tt.normalTransitions.map(t => Transition(t.from, t.to, t.out.getOrElse(m.unit), t.id))
     )(m)
 
-    val yuru = solveParikhImageToZeroWithLP(pa, false)
+    val reuc = solveParikhImageToZeroWithLP(pa, integer, connectivity)
+    reuc match {
+      case Some(euc) => {
+        val extendedEUC = tracker.calc[Double](euc)
+        Some(extendedEUC)
+      }
+      case None => None
+    }
+  }
+
+  def normalizeTT[Out](tt: NormalFormTransducer[Any, Int, IntVector[Out]])(implicit tracker: EdgeUseCountTracker = EdgeUseCountTracker()): NormalFormTransducer[Any, Int, IntVector[Out]] = {
+    val newFin = "nPA_Fin"
+    val newStart = "nPA_start"
+    tracker.newSession()
+
+    NormalFormTransducer[Any, Int, IntVector[Out]](
+      start = newStart,
+      fin = Set(newFin),
+      normalTransitions = tt.normalTransitions.filterNot(t=>t.from == tt.start) ++
+        tt.sourceFrom(tt.start).flatMap(t => {
+          val aid = UniqueEdgeId.get
+          val bid = UniqueEdgeId.get
+          tracker.AddPart(t.id, aid)
+          tracker.AddPart(t.id, bid)
+
+          Seq(
+            NormalFormTransducerTransition(
+              from = newStart,
+              to = t.to,
+              in = t.in,
+              out = t.out.headOption,
+              id = aid
+            ),
+            NormalFormTransducerTransition(
+              from = t.from,
+              to = t.to,
+              in = t.in,
+              out = t.out.headOption,
+              id = bid
+            )
+          )
+        }) ++
+        tt.fin.map(s =>
+          NormalFormTransducerTransition(
+            from = s,
+            to = newFin,
+            in = None,
+            out = Some(IntVectorMonoid[Out]().unit),
+            id = UniqueEdgeId.get
+          )
+        )
+    )
+  }
+
+  def solveWithParikhImageWatcher[Out](watcher: NormalFormTransducer[Any, Char, IntVector[Out]], maxLen: Option[Int]): Option[Seq[Int]] = {
+    val m = IntVectorMonoid[Out]()
+    val tt: NormalFormTransducer[Any, Int, IntVector[Out]] = makeTT(watcher)
+
+    val pa = ParikhAutomaton(
+      start = tt.start,
+      fin = tt.fin,
+      transitions = tt.normalTransitions.map(t => Transition(t.from, t.to, t.out.getOrElse(m.unit), t.id))
+    )(m)
+
+
+    val yuru = connectivityAwareSolve(pa, true, false)
     if(yuru.isEmpty) {
       println(s"linear relaxed unsat")
       return None
     }
     return Some(Seq())
-
     println(s"relax ok")
 
-    val lpres = solveParikhImageToZeroWithLP(pa, true)
-//    println(s"lpres: ${lpres.isDefined}")
+    val lpres = connectivityAwareSolve(pa, true, false)
     if(lpres.isDefined) {
-      return Some(tt.eulerTrail(pa.start, lpres.get).get.flatMap(t => t.in))
+      val trail = tt.eulerTrail(pa.start, lpres.get.map((k,v)=>(k,Math.round(v).toInt))).get.flatMap(t => t.in)
+
+//      val (o1, o2) = transduce(trail)
+//      val watcherUseCount = transducerInToNFA(watcher).getUseCount(o1.toList)
+//      val watcherUseCount2 = transducerInToNFA(watcher).getUseCount(o2.toList)
+//      assert(watcherUseCount == watcherUseCount2)
+
+      return Some(trail)
     } else {
       return None
     }
@@ -96,7 +214,6 @@ case class PCP
         t.from, t.to, t.in, Some(t.id), t.id
       ))
     )
-    wathcerTransducer.saveSVG("wathcerTransducer")
 
     val ret = solveWithWatcher(wathcerTransducer, maxLen)
 
@@ -119,84 +236,12 @@ case class PCP
     res
   }
 
-  def solveWithWatcherViaCone(watcher: NFA[Any, Char]): Boolean = {
-    val watcherTransducer = (v: Int) => NormalFormTransducer[Any, Char, IntVector[EdgeId]](
-      start = watcher.start,
-      fin = watcher.fin,
-      normalTransitions = watcher.transitions.map(t => NormalFormTransducerTransition(
-        from = t.from,
-        to = t.to,
-        in = t.in,
-        out = Some(Map((t.id, v)): IntVector[EdgeId]),
-        id = t.id,
-      ))
-    )
-
-    val (rt1, rt2) = transducers
-    val (t1, t2) = (
-      rt1.addPrefix("t1").normalForm,
-      rt2.addPrefix("t2").normalForm
-    )
-
-    implicit val tracker = EdgeUseCountTracker()
-
-    val tt1 = t1.combine(watcherTransducer(1))
-    val tt2 = t2.combine(watcherTransducer(-1))
-
-    val m = IntVectorMonoid[EdgeId]()
-    val tt = tt1.product(tt2).mapOut{
-      case (Some(e1), Some(e2)) => m.plus(e1, e2)
-      case (Some(e1), None) => e1
-      case (None, Some(e2)) => e2
-      case (None, None) => m.unit
-    }.stateAny()
-
-    println(s"watcher.transitions.size=${watcher.transitions.size}")
-    println(s"tt.transitions.size=${tt.transitions.size}")
-
-
-//    tt.outToNFA.saveSVG("before")
-
-    //    val regex = tt.outToNFA.simplifyWithOutIncrease
-//    println(tt.fin.size)
-//    println(tt.transitions.size)
-//    println(s"regex: ${regex.epsFreeTransitions.size}")
-//    println(s"regex: ${regex.epsFreeTransitions.map(t=>t.in.size).sum}")
-//    println(s"regex: ${tt.outToNFA.toRegex.size}")
-//    regex.saveSVG("after")
-
-    val pa = ParikhAutomaton(
-      start = tt.start,
-      fin = tt.fin,
-      transitions = tt.normalTransitions.map(t => Transition(t.from, t.to, t.out.getOrElse(m.unit), t.id))
-    )(m)
-
-    val res = pa.solveEdgeUseCount(AndList(Seq(
-      pa.chCountPresburgerFormula,
-      pa.acceptConstraint,
-      GreaterThan(
-        Variable(s"sum_y_source_${pa.start}"),
-        Constant(0),
-      ),
-    ) ++ pa.keys.toSeq.map(key =>
-      Equal(pa.KeyCountVar(key), Constant(0))
-    )))
-
-//    pa.saveSVG("pa", "", res.get)
-
-    println(s"pares: ${res.isDefined}")
-    return res.isDefined
-  }
-
   def solveCommonSubstrings(words: Seq[String], alignPrefLen: Int, maxLen: Option[Int]): Option[Seq[Int]] = {
     val ts: Seq[NormalFormTransducer[Any, Char, String]] =
       words.sortBy(w=>w.length).map(s =>
         SubStrCountTransducer(s, alphabets).stateAny()
       )
 
-    val outputEdgeIDs = ts.flatMap(t => t.normalTransitions).filter(t => t.out.isDefined).map(t => t.id)
-
-    println(s"outEE: ${outputEdgeIDs.size}")
     val nfas = ts.map(transducerInToNFA)
 
     var watcher = nfas.reduce[NFA[Any, Char]]((l,r)=>ParallelNFA(l,r).stateAny()).uniquify
@@ -240,12 +285,23 @@ case class PCP
   }
 }
 
-def toTransducer(ss: List[String]): EPSFreeTransducer[String, Int, List[Char]] =
-  EPSFreeTransducer(
+def toTransducer(ss: List[String]): Transducer[String, Int, List[Char]] =
+  Transducer(
     "q", Set("q"), ss.zipWithIndex.map({ case (s, idx) =>
-      TransducerTransition[String, Int, List[Char]](s"q", "q", idx, s.toList, s"$idx")
+      ListTransducerTransition[String, Int, Char](s"q", "q", Some(idx), s.toList, s"$idx")
     })
   )(ListMonoid[Char]())
+
+//def toTransducer(ss: List[String]): EPSFreeTransducer[String, Int, List[Char]] =
+//  EPSFreeTransducer(
+//    "0", ss.indices.map(i=>i.toString).toSet, ss.zipWithIndex.flatMap({ case (fromS, fromIdx) =>
+//      ss.zipWithIndex.map({ case (toS, toIdx) =>
+//        TransducerTransition[String, Int, List[Char]](
+//          fromIdx.toString, toIdx.toString, toIdx, toS.toList, s"${fromIdx}_${toIdx}"
+//        )
+//      })
+//    })
+//  )(ListMonoid[Char]())
 
 def SubStrCountNFA(word: String, alphabets: Set[Char]): NFA[String,Char] =
   transducerInToNFA(SubStrCountTransducer(word, alphabets))
@@ -264,7 +320,7 @@ def SubStrCountTransducer(word: String, alphabets: Set[Char]): NormalFormTransdu
           from = s"$idx",
           to = s"${jumpTo}",
           in = Some(other),
-          out = if(jumpTo <= idx) Some(s"${word}_${idx}_${jumpTo}") else None,
+          out = if(jumpTo <= idx) Some(s"${word}_${idx}_${other}") else None,//Some(UniqueEdgeId.get),
           id = UniqueEdgeId.get)
       })
     )

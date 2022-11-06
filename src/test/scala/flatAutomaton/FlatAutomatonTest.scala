@@ -11,7 +11,7 @@ class FlatAutomatonTest extends AnyFunSuite {
   test("svg check") {
     val fa = FlatAutomaton("a", 3, 5, Set('0','1'))
 
-    fa.saveSVG("fa")
+    fa.saveSVG[Int]("fa")
   }
 
 
@@ -28,7 +28,7 @@ class FlatAutomatonTest extends AnyFunSuite {
     val out1Fa = FlatAutomaton[Char]("out1", 4, 2, pcp.alphabets)
     val out2Fa = FlatAutomaton[Char]("out2", 4, 2, pcp.alphabets)
 
-    inFa.saveSVG("inFa")
+    inFa.saveSVG[Int]("inFa")
 
     val trans1 = pcp.transducers._1.addPrefix("t1").normalForm
     val trans2 = pcp.transducers._2.addPrefix("t2").normalForm
@@ -81,7 +81,6 @@ class FlatAutomatonTest extends AnyFunSuite {
     val inFa = FlatAutomaton[Int]("in", 1, 7, pcp.tiles.indices.toSet)
     val out1Fa = FlatAutomaton[Char]("out1", 4, 2, pcp.alphabets)
 
-    inFa.saveSVG("inFa")
 
     val trans1 = pcp.transducers._1.addPrefix("t1").normalForm
     val trans2 = pcp.transducers._2.addPrefix("t2").normalForm
@@ -126,7 +125,6 @@ class FlatAutomatonTest extends AnyFunSuite {
     val inFa = ConstantAutomaton("01string", Seq(0, 1))
     val out1Fa = FlatAutomaton[Char]("out1", p, q, pcp.alphabets)
 
-    inFa.saveSVG("inFa")
 
     val trans1 = pcp.transducers._1.addPrefix("t1").normalForm
     val tracker1 = EdgeUseCountTracker()
